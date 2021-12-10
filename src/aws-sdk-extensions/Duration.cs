@@ -5,7 +5,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Text;
 
-namespace SqsLongDelay
+namespace SqsDelay
 {
     /// <summary>
     /// Enables simplified representation of the <see cref="TimeSpan"/> value.
@@ -72,6 +72,8 @@ namespace SqsLongDelay
         /// <returns></returns>
         public static string ToDuration(this TimeSpan span)
         {
+            // TODO: add nullable enum argument for total minutes, seconds, etc.
+
             var duration = new StringBuilder();
 
             if(span.Days > 0)
@@ -85,7 +87,7 @@ namespace SqsLongDelay
             {
                 duration.Append(span.Seconds);
                 if (span.Milliseconds > 0)
-                    duration.Append($".{span.Milliseconds / 1000.0}");
+                    duration.Append($".{span.Milliseconds / 1000.0 * 1000}");
                 duration.Append('s');
             }
 

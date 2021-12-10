@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Xunit;
 
-using SqsLongDelay;
+using SqsDelay;
 using aws_sdk_extensions;
 
 namespace QueueMessageHandlerMock.Tests
@@ -10,7 +10,7 @@ namespace QueueMessageHandlerMock.Tests
     public class ExtensionTest
     {
         [Fact]
-        public void TestDuration()
+        public void TestDurationParsing()
         {
             var map = new Dictionary<string, TimeSpan>
             {
@@ -35,6 +35,30 @@ namespace QueueMessageHandlerMock.Tests
             {
                 TimeSpan span = Duration.ToTimeSpan(item.Key);
                 Assert.True(item.Value == span, item.Key);
+            }
+        }
+
+        [Fact]
+        public void TestConversionToDuration()
+        {
+            var map = new Dictionary<TimeSpan, string>
+            {
+                [TimeSpan.Zero] = "0s",
+                [TimeSpan.FromSeconds(1)] = "1s",
+                [TimeSpan.FromSeconds(.12345)] = "0.123s",
+                [TimeSpan.FromDays(1234)] = "1234d",
+                [TimeSpan.FromDays(1)] = "1d",
+                [TimeSpan.FromHours(1234)] = "51d10h",
+                [TimeSpan.FromHours(5)] = "5h",
+                [TimeSpan.FromMinutes(1)] = "1m",
+                [TimeSpan.FromMinutes(2345)] = "1d15h5m",
+                [new TimeSpan(3, 12, 37, 24, 250)] = "3d12h37m24.250s",
+            };
+
+            foreach (var item in map)
+            {
+                string actual = item.Key.ToDuration();
+                Assert.True(actual == item.Value, $"Span: {item.Key}, actual: \"{actual}\", expected: \"{item.Value}\"");
             }
         }
 

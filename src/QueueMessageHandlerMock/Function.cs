@@ -8,7 +8,7 @@ using Amazon.Lambda.Core;
 using Amazon.Lambda.SQSEvents;
 using System;
 
-using SqsLongDelay;
+using SqsDelay;
 using aws_sdk_extensions;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
@@ -22,6 +22,9 @@ namespace QueueMessageHandlerMock
         {
             public string Text { get; set; } = string.Empty;
             public bool? Throw { get; set; }
+            /// <summary>
+            /// Format like: "1s", "3m15s", "2h" <see cref="Duration"/>
+            /// </summary>
             public string? VisiblityTimeoutDuration { get; set; }
         }
 
@@ -45,6 +48,14 @@ namespace QueueMessageHandlerMock
             return Task.WhenAll(tasks);
         }
 
+        /// <summary>
+        /// A fake/mock job processor that can "process" the message and throw an exception. 
+        /// It can also change message visibility timeout.
+        /// </summary>
+        /// <param name="message"></param>
+        /// <param name="context"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
         private async Task ProcessMessageAsync(SQSEvent.SQSMessage message, ILambdaContext context)
         {
             context.Logger.LogLine($"Received message: \"{message.Body}\"");

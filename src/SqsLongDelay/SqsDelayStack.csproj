@@ -8,8 +8,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\aws-sdk-extensions\aws-sdk-extensions.csproj" />
     <ProjectReference Include="..\cdk-shared\cdk-shared.csproj" />
-    <ProjectReference Include="..\sqs-long-delay-construct\sqs-long-delay-construct.csproj" />
+    <ProjectReference Include="..\sqs-long-delay-construct\sqs-delay-construct.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,5 @@
 {
-  "app": "dotnet run --project SqsLongDelay.csproj",
+  "app": "dotnet run --project SqsDelayStack.csproj",
   "watch": {
     "include": [
       "**"
@@ -15,7 +15,12 @@
     ]
   },
   "context": {
-    "QueueName": "long-retry-test-queue",
+    "QueueName": "retry-test-queue",
+    "VisibilityTimeout": "1m",
+    "Delay": "0s",
+    "DlqMaxReceiveCount": "2",
+    "DlqVisibilityTimeout": "10s",
+    "DlqDelay": "45s",
 
     "@aws-cdk/aws-apigateway:usagePlanKeyOrderInsensitiveId": true,
     "@aws-cdk/core:stackRelativeExports": true,

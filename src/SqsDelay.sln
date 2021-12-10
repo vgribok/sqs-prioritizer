@@ -3,11 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 15.0.26124.0
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SqsLongDelay", "SqsLongDelay\SqsLongDelay.csproj", "{CA96217C-77D4-470A-9C98-A67BC847DFE1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SqsDelayStack", "SqsLongDelay\SqsDelayStack.csproj", "{CA96217C-77D4-470A-9C98-A67BC847DFE1}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "cdk-shared", "cdk-shared\cdk-shared.csproj", "{250A47E3-B43B-4574-A948-6C2F4643197A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sqs-long-delay-construct", "sqs-long-delay-construct\sqs-long-delay-construct.csproj", "{9B117CF0-92A8-4084-97F3-86C98E025BC7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "sqs-delay-construct", "sqs-long-delay-construct\sqs-delay-construct.csproj", "{9B117CF0-92A8-4084-97F3-86C98E025BC7}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QueueMessageHandlerMock", "QueueMessageHandlerMock\QueueMessageHandlerMock.csproj", "{CEFD13C5-40EA-424B-820B-2F79ECA5B13A}"
 EndProject
