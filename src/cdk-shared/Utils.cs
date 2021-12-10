@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Net;
 using Newtonsoft.Json.Linq;
 
 #nullable enable
@@ -56,12 +55,6 @@ namespace CdkShared
                     resultHandler(jVal.ToObject<object>()!);
                     break;
             }
-        }
-
-        public static string ReadContentFromUrl(string url)
-        {
-            using var webClient = new WebClient();
-            return webClient.DownloadString(url);
         }
 
         public static IEnumerable<T> ToEnumerable<T>(this T item)

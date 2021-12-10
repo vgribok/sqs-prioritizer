@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\cdk-shared\cdk-shared.csproj" />
+    <ProjectReference Include="..\sqs-long-delay-construct\sqs-long-delay-construct.csproj" />
   </ItemGroup>
 
 </Project>

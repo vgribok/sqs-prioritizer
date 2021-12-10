@@ -1,6 +1,7 @@
 #nullable enable
 using CdkShared;
 using Constructs;
+using sqs_long_delay_construct;
 
 namespace SqsLongDelay
 {
@@ -9,10 +10,15 @@ namespace SqsLongDelay
         private static string GetQueueName(Construct scope)
             => scope.GetCtxString("QueueName", "long-retry-test-queue");
 
+        internal string QueueName => GetQueueName(scope: this);
+
         internal SqsLongDelayStack(Construct scope, string id = "SqsLongDelayStack", BetterStackProps? props = null) 
             : base(scope, id, InitStackProps(props))
         {
-            // The code that defines your stack goes here
+            new SqsWithLongDelayRetry(this, "The-Queue", new SqsWithLongDelayRetryProps
+            {
+                QueueName = this.QueueName
+            });
         }
 
         private static BetterStackProps InitStackProps(BetterStackProps? props)

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <RootNamespace>aws_sdk_extensions</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Amazon.Lambda.SQSEvents" Version="2.0.0" />
+    <PackageReference Include="AWSSDK.SQS" Version="3.7.2.2" />
+  </ItemGroup>
+
+</Project>
