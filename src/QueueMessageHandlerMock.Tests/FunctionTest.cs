@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -6,8 +5,6 @@ using System.Threading.Tasks;
 using Xunit;
 using Amazon.Lambda.TestUtilities;
 using Amazon.Lambda.SQSEvents;
-
-using QueueMessageHandlerMock;
 
 namespace QueueMessageHandlerMock.Tests
 {
@@ -22,7 +19,7 @@ namespace QueueMessageHandlerMock.Tests
                 {
                     new SQSEvent.SQSMessage
                     {
-                        Body = "foobar"
+                        Body = " { \"Text\": \"Hello\" } "
                     }
                 }
             };
@@ -36,7 +33,7 @@ namespace QueueMessageHandlerMock.Tests
             var function = new Function();
             await function.FunctionHandler(sqsEvent, context);
 
-            Assert.Contains("Processed message foobar", logger.Buffer.ToString());
+            Assert.Contains("Processed payload: \"Hello\"", logger.Buffer.ToString());
         }
     }
 }
