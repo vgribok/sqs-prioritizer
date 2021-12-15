@@ -10,20 +10,29 @@ namespace aws_sdk_extensions
 {
     public static class SqsMessageExtensions
     {
-        public static async Task SetVisibilityTimeout(this SQSMessage qmsg, TimeSpan delay)
+        public static Task SetVisibilityTimeout(this SQSMessage qmsg, TimeSpan delay) =>
+            SetVisibilityTimeout(qmsg.EventSourceArn, qmsg.ReceiptHandle, delay);
+
+        public static async Task SetVisibilityTimeout(string queueArn, string messageReceiptHandle, TimeSpan delay)
         {
             var changeMsgVisReq = new ChangeMessageVisibilityRequest
             {
-                QueueUrl = MiscExtensions.SqsArnToUrl(qmsg.EventSourceArn),
-                ReceiptHandle = qmsg.ReceiptHandle,
+                QueueUrl = MiscExtensions.SqsArnToUrl(queueArn),
+                ReceiptHandle = messageReceiptHandle,
                 VisibilityTimeout = (int)delay.TotalSeconds
             };
 
-            using var client = new AmazonSQSClient();
+            using var client = new AmazonSQSClient(RegionEndpoint.GetBySystemName(Arn.Parse(queueArn).Region));
             await client.ChangeMessageVisibilityAsync(changeMsgVisReq);
         }
 
         public static Task ReturnToQueue(this SQSMessage qmsg) =>
             qmsg.SetVisibilityTimeout(TimeSpan.Zero);
+
+        public static string GetReceiptTail(this Message qmsg, int length = 10)
+            => GetReceiptTail(qmsg.ReceiptHandle, length);
+
+        public static string GetReceiptTail(string receiptHandle, int length = 10)
+            => receiptHandle.Substring(receiptHandle.Length - length);
     }
 }

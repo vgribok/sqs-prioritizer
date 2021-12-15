@@ -44,7 +44,7 @@ namespace QueueMessageHandlerMock
         /// <returns></returns>
         public Task FunctionHandler(SQSEvent evnt, ILambdaContext context)
         {
-            IEnumerable<Task> tasks = evnt.Records.Select(record => ProcessMessageAsync(record, context));
+            IEnumerable<Task> tasks = evnt.Records.Select(record => ProcessMessageAsync(record, context.Logger));
             return Task.WhenAll(tasks);
         }
 
@@ -56,22 +56,22 @@ namespace QueueMessageHandlerMock
         /// <param name="context"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        private async Task ProcessMessageAsync(SQSEvent.SQSMessage message, ILambdaContext context)
+        private async Task ProcessMessageAsync(SQSEvent.SQSMessage message, ILambdaLogger logger)
         {
-            context.Logger.LogLine($"Received message: \"{message.Body}\"");
+            logger.LogLine($"Received message: \"{message.Body}\"");
             Message payload = JsonSerializer.Deserialize<Message>(message.Body);
 
             if(!string.IsNullOrWhiteSpace(payload.VisiblityTimeoutDuration))
             {
                 TimeSpan visiblityTimeout = Duration.ToTimeSpan(payload.VisiblityTimeoutDuration);
                 await message.SetVisibilityTimeout(visiblityTimeout);
-                context.Logger.LogLine($"Successfully set message visibility timeout to {visiblityTimeout.ToDuration()}");
+                logger.LogLine($"Successfully set message visibility timeout to {visiblityTimeout.ToDuration()}");
             }
 
             if (payload.Throw ?? false)
                 throw new Exception($"Requested exception: \"{payload.Text}\"");
 
-            context.Logger.LogLine($"Processed payload: \"{payload.Text}\"");
+            logger.LogLine($"Processed payload: \"{payload.Text}\"");
         }
     }
 }
