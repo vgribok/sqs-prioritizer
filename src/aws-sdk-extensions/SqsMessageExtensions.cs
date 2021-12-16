@@ -11,9 +11,9 @@ namespace aws_sdk_extensions
     public static class SqsMessageExtensions
     {
         public static Task SetVisibilityTimeout(this SQSMessage qmsg, TimeSpan delay) =>
-            SetVisibilityTimeout(qmsg.EventSourceArn, qmsg.ReceiptHandle, delay);
+            SetVisibilityTimeout(Arn.Parse(qmsg.EventSourceArn), qmsg.ReceiptHandle, delay);
 
-        public static async Task SetVisibilityTimeout(string queueArn, string messageReceiptHandle, TimeSpan delay)
+        public static async Task SetVisibilityTimeout(Arn queueArn, string messageReceiptHandle, TimeSpan delay)
         {
             var changeMsgVisReq = new ChangeMessageVisibilityRequest
             {
@@ -22,7 +22,7 @@ namespace aws_sdk_extensions
                 VisibilityTimeout = (int)delay.TotalSeconds
             };
 
-            using var client = new AmazonSQSClient(RegionEndpoint.GetBySystemName(Arn.Parse(queueArn).Region));
+            using var client = new AmazonSQSClient(RegionEndpoint.GetBySystemName(queueArn.Region));
             await client.ChangeMessageVisibilityAsync(changeMsgVisReq);
         }
 

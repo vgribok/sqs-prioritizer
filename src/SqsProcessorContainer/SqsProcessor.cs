@@ -8,23 +8,22 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 
 using aws_sdk_extensions;
-using System.Text;
 
 namespace SqsProcessorContainer
 {
     /// <summary>
     /// Base class for container-friendly, thread-safe, long-polling but cancellable SQS message processor.
     /// </summary>
-    /// <typeparam name="TMsgModel"></typeparam>
+    /// <typeparam name="TMsgModel">Queue message model</typeparam>
     public abstract class SqsProcessor<TMsgModel>
     {
         // TODO: Use ILogger instead of Console methods.
 
-        protected readonly string _queueArn;
+        protected readonly Arn _queueArn;
         protected readonly string _queueUrl;
         protected readonly RegionEndpoint _awsregion;
         protected readonly int _longPollingWaitSeconds;
-        protected readonly int _listenerNumber;
+        protected readonly string _listenerId;
 
         public static List<TProcessor> StartProcessors<TProcessor>(int listenerCount, Func<int, TProcessor> factory) 
             where TProcessor : SqsProcessor<TMsgModel>
@@ -32,37 +31,53 @@ namespace SqsProcessorContainer
                     .Select(i => factory(i))
                     .ToList();
 
-        public SqsProcessor(int listenerNumber)
+        public SqsProcessor(Arn sqsQueueArn, string listenerId)
         {
-            _queueArn = "arn:aws:sqs:us-east-2:444039259723:delme";
-            _listenerNumber = listenerNumber;
-            _queueUrl = MiscExtensions.SqsArnToUrl(_queueArn);
-            _awsregion = RegionEndpoint.GetBySystemName(Arn.Parse(_queueArn).Region);
-            _longPollingWaitSeconds = 2;
+            _queueArn = sqsQueueArn;
+            _listenerId = listenerId;
+
+            _queueUrl = _queueArn.SqsArnToUrl();
+            _awsregion = RegionEndpoint.GetBySystemName(_queueArn.Region);
+            _longPollingWaitSeconds = 20; // Have it as long as possible
         }
 
-        private AmazonSQSClient GetSqsClient() => new AmazonSQSClient(_awsregion);
+        private AmazonSQSClient GetSqsClient() => new(_awsregion);
 
         public async Task Listen(CancellationToken appExitRequestToken)
         {
-            Console.WriteLine($"Started listener {_listenerNumber}.");
+            Console.WriteLine($"Started listener {_listenerId}.");
 
             try
             {
-                for (int i = 1 ; ; i++)
-                    await FetchFromQueue(appExitRequestToken, i);
+                while(true)
+                    await FetchAndProcess(appExitRequestToken);
             }
             catch (TaskCanceledException)
             {
-                Console.WriteLine($"Queue processor {_listenerNumber} is terminated by cancellation request");
+                Console.WriteLine($"Queue processor {_listenerId} is terminated by cancellation request");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Message listener {_listenerNumber} threw exception and stopped: { ex.Message}");
+                Console.WriteLine($"Message listener {_listenerId} threw exception and stopped: { ex.Message}");
+                throw;
             }
         }
 
-        private async Task FetchFromQueue(CancellationToken token, int step)
+        private async Task FetchAndProcess(CancellationToken cancellationToken)
+        {
+            List<Message> messages = await FetchMessageBatch(cancellationToken);
+
+            if (messages.Count == 0)
+            {
+                Console.WriteLine($"Listener {_listenerId}: polling cycle returned no messages.");
+                return;
+            }
+
+            IEnumerable<Task> processors = messages.Select(ProcessMessage);
+            await Task.WhenAll(processors);
+        }
+
+        private async Task<List<Message>> FetchMessageBatch(CancellationToken cancellationToken)
         {
             var receiveMessageRequest = new ReceiveMessageRequest
             {
@@ -72,25 +87,8 @@ namespace SqsProcessorContainer
             };
 
             using var sqsClient = GetSqsClient();
-            var receiveMsgReponse = await sqsClient.ReceiveMessageAsync(receiveMessageRequest, token);
-            var messages = receiveMsgReponse.Messages;
-
-            var text = new StringBuilder();
-            text.Append($"Listener {_listenerNumber} Step {step}: ");
-
-            if (messages.Count == 0)
-            {
-                text.Append("No Messages to process");
-                Console.WriteLine(text);
-                return;
-            }
-    
-            text.Append($"Processing a batch of {messages.Count} messages");
-            Console.WriteLine(text);
-
-            IEnumerable<Task> processors = from message in messages
-                                            select ProcessMessageAsync(message);
-            await Task.WhenAll(processors);
+            var receiveMsgReponse = await sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
+            return receiveMsgReponse.Messages;
         }
 
         /// <summary>
@@ -98,24 +96,29 @@ namespace SqsProcessorContainer
         /// It can also change message visibility timeout.
         /// </summary>
         /// <param name="message"></param>
-        /// <param name="context"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        private async Task ProcessMessageAsync(Message message)
+        private async Task ProcessMessage(Message message)
         {
-            Console.WriteLine($"Listener {_listenerNumber} Received message with receipt {message.GetReceiptTail()} and body: \"{message.Body}\"");
+            Console.WriteLine($"Listener {_listenerId} Received message with receipt {message.GetReceiptTail()} and body: \"{message.Body}\"");
             TMsgModel payload = JsonSerializer.Deserialize<TMsgModel>(message.Body)!;
 
             await ProcessPayload(message.ReceiptHandle, payload);
             await DeleteMessageAsync(message.ReceiptHandle);
         }
 
+        /// <summary>
+        /// Method to override in subclasses
+        /// </summary>
+        /// <param name="receiptHandle">Can be used to extend or shrink current message visibility timeout</param>
+        /// <param name="payload">Message payload</param>
+        /// <returns></returns>
         protected abstract Task ProcessPayload(string receiptHandle, TMsgModel payload);
 
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, TimeSpan visibilityTimeout)
         {
             await SqsMessageExtensions.SetVisibilityTimeout(_queueArn, receiptHandle, visibilityTimeout);
-            Console.WriteLine($"Listener {_listenerNumber} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
+            Console.WriteLine($"Listener {_listenerId} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
         }
 
         private async Task DeleteMessageAsync(string receiptHandle)
@@ -128,7 +131,7 @@ namespace SqsProcessorContainer
             using var sqsClient = GetSqsClient();
             DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
-            Console.WriteLine($"Listener {_listenerNumber} deleted message with receipt: \"{SqsMessageExtensions.GetReceiptTail(receiptHandle)}\"");
+            Console.WriteLine($"Listener {_listenerId} deleted message with receipt: \"{SqsMessageExtensions.GetReceiptTail(receiptHandle)}\"");
         }
     }
 }

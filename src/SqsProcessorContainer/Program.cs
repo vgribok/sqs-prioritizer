@@ -2,34 +2,32 @@
 
 // See https://aka.ms/new-console-template for more information
 
+using Amazon;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using SqsProcessorContainer;
 
-public static class Program
+public class Program : BackgroundService
 {
-    public static async Task Main()
-    {   // TODO: do IoC
+    public static Task Main(string[] args) =>
+        CreateHostBuilder(args).Build().RunAsync();
 
-        using CancellationTokenSource cancellationSource = CreateAppExitCancellationSource();
+    static IHostBuilder CreateHostBuilder(string[] args) =>
+        Host.CreateDefaultBuilder(args)
+            .ConfigureServices((_, services) =>
+                services.AddHostedService<Program>());
 
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    {
         const int listenerCount = 3;
-        List<NopMessageProcessor> listeners = SqsProcessor<MessageModel>.StartProcessors(
-            listenerCount, (i) => new NopMessageProcessor(i)
+        Arn queueArn = Arn.Parse("arn:aws:sqs:us-east-2:444039259723:delme");
+
+        List<NopMessageProcessor> listeners = SqsProcessor<MessageModel>.StartProcessors(listenerCount,
+            (i) => new NopMessageProcessor(queueArn, i.ToString())
         );
 
-        IEnumerable<Task> listenerTasks = from l in listeners
-                                          select l.Listen(cancellationSource.Token);
-        
-        await Task.WhenAll(listenerTasks);
-    }
+        IEnumerable<Task> listenerTasks = listeners.Select(l => l.Listen(stoppingToken));
 
-    private static CancellationTokenSource CreateAppExitCancellationSource()
-    {   // TODO: Add support for SIGTERM or other ways of react to container termination
-        var cancellationSource = new CancellationTokenSource();
-        Console.CancelKeyPress += (object? sender, ConsoleCancelEventArgs e) =>
-        {
-            e.Cancel = true;
-            cancellationSource.Cancel();
-        };
-        return cancellationSource;
+        return Task.WhenAll(listenerTasks);
     }
 }

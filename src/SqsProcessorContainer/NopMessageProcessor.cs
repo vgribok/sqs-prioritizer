@@ -1,5 +1,6 @@
 ﻿#nullable enable
 
+using Amazon;
 using aws_sdk_extensions;
 using SqsDelay;
 
@@ -10,7 +11,8 @@ namespace SqsProcessorContainer
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
-        public NopMessageProcessor(int listenerNumber) : base(listenerNumber)
+        public NopMessageProcessor(Arn queueArn, string processorId) 
+            : base(queueArn, processorId)
         {
         }
 
@@ -20,9 +22,9 @@ namespace SqsProcessorContainer
                 await UpdateMessageVisibilityTimeout(receiptHandle, Duration.ToTimeSpan(payload.VisiblityTimeoutDuration));
 
             if (payload.Throw ?? false)
-                throw new Exception($"Listener {_listenerNumber} message with receipt {SqsMessageExtensions.GetReceiptTail(receiptHandle)} requested exception: \"{payload.Text}\"");
+                throw new Exception($"Listener {_listenerId} message with receipt {SqsMessageExtensions.GetReceiptTail(receiptHandle)} requested exception: \"{payload.Text}\"");
 
-            Console.WriteLine($"Listener {_listenerNumber} NOP-processed payload: \"{payload.Text}\"");
+            Console.WriteLine($"Listener {_listenerId} NOP-processed payload: \"{payload.Text}\"");
         }
     }
 }
