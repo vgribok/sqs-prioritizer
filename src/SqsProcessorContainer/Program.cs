@@ -1,36 +1,29 @@
 ﻿#nullable enable
 
-// See https://aka.ms/new-console-template for more information
-
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using SqsProcessorContainer;
 using SqsProcessorContainer.Models;
 
 public class Program : BackgroundService
 {
-    public static Task Main(string[] args) => CreateHostBuilder(args).Build().RunAsync();
-
-    static IHostBuilder CreateHostBuilder(string[] args) =>
-        Host.CreateDefaultBuilder(args)
-            .ConfigureServices((context, services) => ConfigureServices(context, services));
+    public static Task Main(string[] args) => ConsoleApp.Init<Program>(args, ConfigureServices);
 
     private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
     {
-        services.AddHostedService<Program>();
-        // Add other services below
-
-        services.Configure<AppSettings>(context.Configuration.GetSection("AppSettings"));
+        services.RegisterAppSettingsSection<AppSettings>(context.Configuration);
     }
-
 
     private AppSettings Settings { get; }
 
-    public Program(IServiceProvider iocContainer, IOptions<AppSettings> settings)
+    /// <summary>
+    /// IoC-friendly constructor with parameters injected by DI container
+    /// </summary>
+    /// <param name="iocContainer"></param>
+    /// <param name="settings">Injected class representing an app settings section.</param>
+    public Program(IServiceProvider iocContainer, AppSettings settings)
     {
-        Settings = settings.Value;
+        Settings = settings;
     }
     
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
