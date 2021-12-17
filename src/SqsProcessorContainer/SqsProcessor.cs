@@ -8,6 +8,7 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 
 using aws_sdk_extensions;
+using Microsoft.Extensions.Logging;
 
 namespace SqsProcessorContainer
 {
@@ -17,22 +18,17 @@ namespace SqsProcessorContainer
     /// <typeparam name="TMsgModel">Queue message model</typeparam>
     public abstract class SqsProcessor<TMsgModel>
     {
-        // TODO: Use ILogger instead of Console methods.
-
         protected readonly Arn _queueArn;
         protected readonly string _queueUrl;
         protected readonly RegionEndpoint _awsregion;
         protected readonly int _longPollingWaitSeconds;
         protected readonly string _listenerId;
 
-        public static List<TProcessor> StartProcessors<TProcessor>(int listenerCount, Func<int, TProcessor> factory) 
-            where TProcessor : SqsProcessor<TMsgModel>
-                => Enumerable.Range(1, listenerCount)
-                    .Select(i => factory(i))
-                    .ToList();
+        protected readonly ILogger logger;
 
-        public SqsProcessor(Arn sqsQueueArn, string listenerId)
+        public SqsProcessor(Arn sqsQueueArn, string listenerId, ILogger logger)
         {
+            this.logger = logger;
             _queueArn = sqsQueueArn;
             _listenerId = listenerId;
 
@@ -45,7 +41,7 @@ namespace SqsProcessorContainer
 
         public async Task Listen(CancellationToken appExitRequestToken)
         {
-            Console.WriteLine($"Started listener {_listenerId}.");
+            logger.LogInformation($"Started listener loop for {_listenerId}.");
 
             try
             {
@@ -54,11 +50,11 @@ namespace SqsProcessorContainer
             }
             catch (TaskCanceledException)
             {
-                Console.WriteLine($"Queue processor {_listenerId} is terminated by cancellation request");
+                logger.LogInformation($"Queue processor {_listenerId} is terminated by cancellation request");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Message listener {_listenerId} threw exception and stopped: { ex.Message}");
+                logger.LogInformation($"Message listener {_listenerId} threw exception and stopped: { ex.Message}");
                 throw;
             }
         }
@@ -69,7 +65,7 @@ namespace SqsProcessorContainer
 
             if (messages.Count == 0)
             {
-                Console.WriteLine($"Listener {_listenerId}: polling cycle returned no messages.");
+                logger.LogDebug($"Listener {_listenerId}: polling cycle returned no messages.");
                 return;
             }
 
@@ -100,7 +96,7 @@ namespace SqsProcessorContainer
         /// <exception cref="Exception"></exception>
         private async Task ProcessMessage(Message message)
         {
-            Console.WriteLine($"Listener {_listenerId} Received message with receipt {message.GetReceiptTail()} and body: \"{message.Body}\"");
+            logger.LogDebug($"Listener {_listenerId} Received message with receipt {message.GetReceiptTail()} and body: \"{message.Body}\"");
             TMsgModel payload = JsonSerializer.Deserialize<TMsgModel>(message.Body)!;
 
             await ProcessPayload(message.ReceiptHandle, payload);
@@ -118,7 +114,7 @@ namespace SqsProcessorContainer
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, TimeSpan visibilityTimeout)
         {
             await SqsMessageExtensions.SetVisibilityTimeout(_queueArn, receiptHandle, visibilityTimeout);
-            Console.WriteLine($"Listener {_listenerId} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
+            logger.LogDebug($"Listener {_listenerId} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
         }
 
         private async Task DeleteMessageAsync(string receiptHandle)
@@ -131,7 +127,7 @@ namespace SqsProcessorContainer
             using var sqsClient = GetSqsClient();
             DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
-            Console.WriteLine($"Listener {_listenerId} deleted message with receipt: \"{SqsMessageExtensions.GetReceiptTail(receiptHandle)}\"");
+            logger.LogDebug($"Listener {_listenerId} deleted message with receipt: \"{SqsMessageExtensions.GetReceiptTail(receiptHandle)}\"");
         }
     }
 }

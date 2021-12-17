@@ -2,6 +2,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using SqsProcessorContainer;
 using SqsProcessorContainer.Models;
 
@@ -15,6 +16,7 @@ public class Program : BackgroundService
     }
 
     private AppSettings Settings { get; }
+    private readonly IServiceProvider iocContainer;
 
     /// <summary>
     /// IoC-friendly constructor with parameters injected by DI container
@@ -23,14 +25,22 @@ public class Program : BackgroundService
     /// <param name="settings">Injected class representing an app settings section.</param>
     public Program(IServiceProvider iocContainer, AppSettings settings)
     {
-        Settings = settings;
+        this.iocContainer = iocContainer;
+        this.Settings = settings;
     }
     
+    /// <summary>
+    /// Main service/daemon execution loop
+    /// </summary>
+    /// <param name="stoppingToken">Ctrl-C and container SIGTERM source of stop signal</param>
+    /// <returns></returns>
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        List<NopMessageProcessor> listeners = SqsProcessor<MessageModel>.StartProcessors(this.Settings.ProcessorCount,
-            (i) => new NopMessageProcessor(this.Settings.QueueArnParsed, i.ToString())
-        );
+        var processorLogger = iocContainer.GetRequiredService<ILogger<NopMessageProcessor>>();
+
+        List<NopMessageProcessor> listeners = Enumerable.Range(1, this.Settings.ProcessorCount)
+                    .Select(i => new NopMessageProcessor(this.Settings.QueueArnParsed, i.ToString(), processorLogger))
+                    .ToList();
 
         IEnumerable<Task> listenerTasks = listeners.Select(l => l.Listen(stoppingToken));
         return Task.WhenAll(listenerTasks);

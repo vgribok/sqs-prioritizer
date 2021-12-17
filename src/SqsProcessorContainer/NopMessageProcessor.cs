@@ -2,6 +2,7 @@
 
 using Amazon;
 using aws_sdk_extensions;
+using Microsoft.Extensions.Logging;
 using SqsDelay;
 
 namespace SqsProcessorContainer
@@ -11,8 +12,8 @@ namespace SqsProcessorContainer
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
-        public NopMessageProcessor(Arn queueArn, string processorId) 
-            : base(queueArn, processorId)
+        public NopMessageProcessor(Arn queueArn, string processorId, ILogger<NopMessageProcessor> logger) 
+            : base(queueArn, processorId, logger)
         {
         }
 
@@ -24,7 +25,7 @@ namespace SqsProcessorContainer
             if (payload.Throw ?? false)
                 throw new Exception($"Listener {_listenerId} message with receipt {SqsMessageExtensions.GetReceiptTail(receiptHandle)} requested exception: \"{payload.Text}\"");
 
-            Console.WriteLine($"Listener {_listenerId} NOP-processed payload: \"{payload.Text}\"");
+            logger.LogInformation($"Listener {_listenerId} NOP-processed payload: \"{payload.Text}\"");
         }
     }
 }

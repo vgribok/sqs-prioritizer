@@ -28,7 +28,15 @@ namespace SqsProcessorContainer
             configureDelegate(context, services);
         }
 
-        public static void RegisterAppSettingsSection<TSettingsSection>(this IServiceCollection services, IConfiguration config) where TSettingsSection : class
+        /// <summary>
+        /// Makes a section of the appsettings.json file accessible as a strongly-typed class
+        /// resolvable via DI.
+        /// </summary>
+        /// <typeparam name="TSettingsSection">A class representing settings in a section of the appsettings.json</typeparam>
+        /// <param name="services"></param>
+        /// <param name="config"></param>
+        public static void RegisterAppSettingsSection<TSettingsSection>(this IServiceCollection services, IConfiguration config) 
+            where TSettingsSection : class
         {
             services.Configure<TSettingsSection>(config.GetSection(typeof(TSettingsSection).Name));
             services.AddTransient(ioc => ioc.GetRequiredService<IOptions<TSettingsSection>>().Value);
