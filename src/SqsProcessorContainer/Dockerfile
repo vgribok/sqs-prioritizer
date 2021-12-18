@@ -6,8 +6,8 @@
 # To run locally using your current aws cli credentials, execute following lines in PowerShell:
 # $access_key=aws configure get aws_access_key_id
 # $secret_key=aws configure get aws_secret_access_key
-# $sqs_arn="<YOUR QUEUE ARN>"
-# docker run -it -e AppSettings__QeueueArn=$sqs_arn -e AWS_ACCESS_KEY_ID=$access_key -e AWS_SECRET_ACCESS_KEY=$secret_key -e Logging__LogLevel__Default=Trace --name sqs-processor sqsprocessor:latest
+# $sqs_arns="<YOUR COMMA-DELIMITED QUEUE ARN STARTING WITH HIGHEST PRIORITY>"
+# docker run -it -e AppSettings__QeueueArns=$sqs_arns -e AWS_ACCESS_KEY_ID=$access_key -e AWS_SECRET_ACCESS_KEY=$secret_key -e Logging__LogLevel__Default=Trace --name sqs-processor sqsprocessor:latest
 
 # To stop container running locally, run following lines:
 # docker stop sqs-processor (or Ctrl+C and then "docker rm sqs-processor")

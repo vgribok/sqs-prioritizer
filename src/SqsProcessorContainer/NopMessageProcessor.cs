@@ -8,7 +8,7 @@ using SqsDelay;
 namespace SqsProcessorContainer
 {
     /// <summary>
-    /// Almost "do nothing" SQS message processor 
+    /// Almost "do nothing" SQS message processor example
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
@@ -17,6 +17,15 @@ namespace SqsProcessorContainer
         {
         }
 
+        /// <summary>
+        /// An example of message payload processor
+        /// </summary>
+        /// <param name="payload"></param>
+        /// <param name="receiptHandle"></param>
+        /// <param name="queueIndex"></param>
+        /// <param name="messageId"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
         protected override async Task ProcessPayload(MessageModel payload, string receiptHandle, int queueIndex, string messageId)
         {
             if (!string.IsNullOrWhiteSpace(payload.VisiblityTimeoutDuration))
