@@ -1,7 +1,7 @@
 ﻿#nullable enable
 
 using Amazon;
-using aws_sdk_extensions;
+using Amazon.SQS.Model;
 using Microsoft.Extensions.Logging;
 using SqsDelay;
 
@@ -12,20 +12,25 @@ namespace SqsProcessorContainer
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
-        public NopMessageProcessor(Arn queueArn, string processorId, ILogger<NopMessageProcessor> logger) 
-            : base(queueArn, processorId, logger)
+        public NopMessageProcessor(Arn[] queueArns, string processorId, ILogger<NopMessageProcessor> logger, int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds) 
+            : base(queueArns, processorId, logger, highPriorityWaitTimeoutSeconds, failureVisibilityTimeoutSeconds)
         {
         }
 
-        protected override async Task ProcessPayload(string receiptHandle, MessageModel payload)
+        protected override async Task ProcessPayload(MessageModel payload, string receiptHandle, int queueIndex, string messageId)
         {
             if (!string.IsNullOrWhiteSpace(payload.VisiblityTimeoutDuration))
-                await UpdateMessageVisibilityTimeout(receiptHandle, Duration.ToTimeSpan(payload.VisiblityTimeoutDuration));
+                await UpdateMessageVisibilityTimeout(receiptHandle, queueIndex, Duration.ToTimeSpan(payload.VisiblityTimeoutDuration));
 
             if (payload.Throw ?? false)
-                throw new Exception($"Listener {_listenerId} message with receipt {SqsMessageExtensions.GetReceiptTail(receiptHandle)} requested exception: \"{payload.Text}\"");
+                throw new Exception($"{Id(queueIndex)} message with Id {messageId} requested exception: \"{payload.Text}\"");
 
-            logger.LogInformation($"Listener {_listenerId} NOP-processed payload: \"{payload.Text}\"");
+            logger.LogInformation($"{Id(queueIndex)} NOP-processed payload: \"{payload.Text}\"");
+        }
+
+        protected override Task HandlePayloadProcessingException(Exception ex, Message message, int queueIndex, TimeSpan failureVisibilityTimeout)
+        {
+            return base.HandlePayloadProcessingException(ex, message, queueIndex, failureVisibilityTimeout);
         }
     }
 }

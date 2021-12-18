@@ -18,26 +18,41 @@ namespace SqsProcessorContainer
     /// <typeparam name="TMsgModel">Queue message model</typeparam>
     public abstract class SqsProcessor<TMsgModel>
     {
-        protected readonly Arn _queueArn;
-        protected readonly string _queueUrl;
+        public const int maxLongPollingTimeSeconds = 20;
+
+        protected readonly Arn[] _queueArns;
+        protected readonly string[] _queueUrls;
         protected readonly RegionEndpoint _awsregion;
         protected readonly int _longPollingWaitSeconds;
         protected readonly string _listenerId;
-
+        protected readonly int _highPriorityWaitTimeoutSeconds;
+        protected readonly TimeSpan _failureVisibilityTimeout;
         protected readonly ILogger logger;
 
-        public SqsProcessor(Arn sqsQueueArn, string listenerId, ILogger logger)
+        public SqsProcessor(Arn[] sqsQueueArns, string listenerId, ILogger logger, int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds)
         {
             this.logger = logger;
-            _queueArn = sqsQueueArn;
+            _queueArns = sqsQueueArns;
             _listenerId = listenerId;
+            _highPriorityWaitTimeoutSeconds = highPriorityWaitTimeoutSeconds;
+            _failureVisibilityTimeout = TimeSpan.FromSeconds(failureVisibilityTimeoutSeconds);
 
-            _queueUrl = _queueArn.SqsArnToUrl();
-            _awsregion = RegionEndpoint.GetBySystemName(_queueArn.Region);
+            _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
+            _awsregion = RegionEndpoint.GetBySystemName(GetQueueRegion(_queueArns));
             _longPollingWaitSeconds = 20; // Have it as long as possible
         }
 
+        private static string GetQueueRegion(Arn[] queueArns)
+        {
+            string[] regions = queueArns.Select(arn => arn.Region).Distinct().ToArray();
+            if (regions.Length > 1)
+                throw new ArgumentException($"All queues must belong to the same region", nameof(queueArns));
+            return regions[0];
+        }
+
         private AmazonSQSClient GetSqsClient() => new(_awsregion);
+
+        protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {_listenerId}";
 
         public async Task Listen(CancellationToken appExitRequestToken)
         {
@@ -45,7 +60,7 @@ namespace SqsProcessorContainer
 
             try
             {
-                while(true)
+                while(!appExitRequestToken.IsCancellationRequested)
                     await FetchAndProcess(appExitRequestToken);
             }
             catch (TaskCanceledException)
@@ -61,25 +76,64 @@ namespace SqsProcessorContainer
 
         private async Task FetchAndProcess(CancellationToken cancellationToken)
         {
-            List<Message> messages = await FetchMessageBatch(cancellationToken);
-
-            if (messages.Count == 0)
+            for (int queueIndex = 0; queueIndex < _queueArns.Length; queueIndex++) // Going from the highest priority 
             {
-                logger.LogDebug($"Listener {_listenerId}: polling cycle returned no messages.");
-                return;
-            }
+                bool isTopPriorityQueue = queueIndex == 0 && _queueArns.Length > 1;
 
-            IEnumerable<Task> processors = messages.Select(ProcessMessage);
-            await Task.WhenAll(processors);
+                if (isTopPriorityQueue)
+                {   // A top priority queue with lower priority queues present
+                    bool mayHaveMessages = true;
+                    for (int pollingDelaySeconds = _highPriorityWaitTimeoutSeconds ; mayHaveMessages ; pollingDelaySeconds = 0)
+                    {
+                        mayHaveMessages = await FetchAndProcess(queueIndex, pollingDelaySeconds, cancellationToken, maxMessages: 1);
+                    }
+                }else
+                {   // A single queue or a lower priority queue
+
+                    // If there's only one queue, use maximum long-polling delay.
+                    // If it's a low priority queue, we'll do short polling
+                    int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0; 
+                    
+                    if (await FetchAndProcess(queueIndex, pollingDelaySeconds, cancellationToken, maxMessages: 1))
+                        // processed messages
+                        break; // restart processing loop from the highest priority as it may
+                    // No messages were processed, continue to the lower priority queue
+                }
+            }
         }
 
-        private async Task<List<Message>> FetchMessageBatch(CancellationToken cancellationToken)
+        private async Task<bool> FetchAndProcess(int queueIndex, int pollingDelaySeconds, CancellationToken cancellationToken, int maxMessages = 1)
+        {
+            List<Message> messages = await FetchMessagesFromSingleQueueWithLongPoll(
+                        cancellationToken,
+                        _queueUrls[queueIndex],
+                        pollingDelaySeconds,
+                        maxMessages
+                    );
+            return await ProcessMessages(messages, queueIndex);
+        }
+
+        private async Task<bool> ProcessMessages(List<Message> messages, int queueIndex)
+        {
+            if (messages.Count == 0)
+            {
+                logger.LogDebug($"{Id(queueIndex)}: polling cycle returned no messages.");
+                return false;
+            }
+
+            IEnumerable<Task> processors = messages.Select(m => ProcessMessage(m, queueIndex));
+            await Task.WhenAll(processors);
+            return true;
+        }
+
+        private async Task<List<Message>> FetchMessagesFromSingleQueueWithLongPoll(
+                    CancellationToken cancellationToken, string queueUrl, int longPollTimeSeconds = 20, int maxMessages = 1)
         {
             var receiveMessageRequest = new ReceiveMessageRequest
             {
-                QueueUrl = _queueUrl,
-                MaxNumberOfMessages = 1, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
-                WaitTimeSeconds = _longPollingWaitSeconds
+                QueueUrl = queueUrl,
+                MaxNumberOfMessages = maxMessages, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
+                WaitTimeSeconds = longPollTimeSeconds
             };
 
             using var sqsClient = GetSqsClient();
@@ -94,40 +148,65 @@ namespace SqsProcessorContainer
         /// <param name="message"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        private async Task ProcessMessage(Message message)
+        private async Task ProcessMessage(Message message, int queueIndex)
         {
-            logger.LogDebug($"Listener {_listenerId} Received message with receipt {message.GetReceiptTail()} and body: \"{message.Body}\"");
-            TMsgModel payload = JsonSerializer.Deserialize<TMsgModel>(message.Body)!;
+            logger.LogDebug($"{Id(queueIndex)} Received message with id {message.MessageId} and body: \"{message.Body}\"");
+            try
+            {
+                try
+                {
+                    TMsgModel payload = JsonSerializer.Deserialize<TMsgModel>(message.Body)!;
+                    await ProcessPayload(payload, message.ReceiptHandle, queueIndex, message.MessageId);
+                }catch (Exception ex)
+                {
+                    throw new PayloadProcessingException(ex);
+                }
+                await DeleteMessageAsync(message, queueIndex);
+            }
+            catch (PayloadProcessingException ex)
+            {
+                await HandlePayloadProcessingException(ex, message, queueIndex, _failureVisibilityTimeout);
+            }
+        }
 
-            await ProcessPayload(message.ReceiptHandle, payload);
-            await DeleteMessageAsync(message.ReceiptHandle);
+        protected virtual Task HandlePayloadProcessingException(Exception ex, Message message, int queueIndex, TimeSpan failureVisibilityTimeoutSeconds)
+        {
+            logger.LogError($"{Id(queueIndex)} Failed to process message {message.MessageId} " +
+                            $"due to \"{ex.Message}\". " +
+                            $"Its visibility timeout is set to {failureVisibilityTimeoutSeconds.ToDuration()}");
+
+            logger.LogDebug($"{Id(queueIndex)} message: {message}\ncaused exception {ex}\nand will be retruned to the queue or to DLQ");
+
+            return UpdateMessageVisibilityTimeout(message.ReceiptHandle, queueIndex, failureVisibilityTimeoutSeconds);
         }
 
         /// <summary>
         /// Method to override in subclasses
         /// </summary>
-        /// <param name="receiptHandle">Can be used to extend or shrink current message visibility timeout</param>
         /// <param name="payload">Message payload</param>
+        /// <param name="receiptHandle">Can be used to extend or shrink current message visibility timeout</param>
+        /// <param name="queueIndex"></param>
+        /// <param name="messageId"></param>
         /// <returns></returns>
-        protected abstract Task ProcessPayload(string receiptHandle, TMsgModel payload);
+        protected abstract Task ProcessPayload(TMsgModel payload, string receiptHandle, int queueIndex, string messageId);
 
-        protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, TimeSpan visibilityTimeout)
+        protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, int queueIndex, TimeSpan visibilityTimeout)
         {
-            await SqsMessageExtensions.SetVisibilityTimeout(_queueArn, receiptHandle, visibilityTimeout);
-            logger.LogDebug($"Listener {_listenerId} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
+            await SqsMessageExtensions.SetVisibilityTimeout(_queueArns[queueIndex], receiptHandle, visibilityTimeout);
+            logger.LogDebug($"{Id(queueIndex)} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
         }
 
-        private async Task DeleteMessageAsync(string receiptHandle)
+        protected async Task DeleteMessageAsync(Message message, int queueIndex)
         {
             DeleteMessageRequest deleteMessageRequest = new DeleteMessageRequest
             {
-                QueueUrl = _queueUrl,
-                ReceiptHandle = receiptHandle
+                QueueUrl = _queueUrls[queueIndex],
+                ReceiptHandle = message.ReceiptHandle
             };
             using var sqsClient = GetSqsClient();
             DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
-            logger.LogDebug($"Listener {_listenerId} deleted message with receipt: \"{SqsMessageExtensions.GetReceiptTail(receiptHandle)}\"");
+            logger.LogDebug($"{Id(queueIndex)} deleted message with Id: \"{message.MessageId}\"");
         }
     }
 }

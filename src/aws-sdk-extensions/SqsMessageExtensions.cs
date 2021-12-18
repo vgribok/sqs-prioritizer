@@ -28,11 +28,5 @@ namespace aws_sdk_extensions
 
         public static Task ReturnToQueue(this SQSMessage qmsg) =>
             qmsg.SetVisibilityTimeout(TimeSpan.Zero);
-
-        public static string GetReceiptTail(this Message qmsg, int length = 10)
-            => GetReceiptTail(qmsg.ReceiptHandle, length);
-
-        public static string GetReceiptTail(string receiptHandle, int length = 10)
-            => receiptHandle.Substring(receiptHandle.Length - length);
     }
 }

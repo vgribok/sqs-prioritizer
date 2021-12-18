@@ -10,7 +10,7 @@
 # docker run -it -e AppSettings__QeueueArn=$sqs_arn -e AWS_ACCESS_KEY_ID=$access_key -e AWS_SECRET_ACCESS_KEY=$secret_key -e Logging__LogLevel__Default=Trace --name sqs-processor sqsprocessor:latest
 
 # To stop container running locally, run following lines:
-# docker stop sqs-processor
+# docker stop sqs-processor (or Ctrl+C and then "docker rm sqs-processor")
 # docker rm sqs-processor
 
 FROM mcr.microsoft.com/dotnet/runtime:6.0 AS base

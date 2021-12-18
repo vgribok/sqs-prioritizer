@@ -1,5 +1,6 @@
 ﻿#nullable enable
 
+using Amazon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,7 @@ public class Program : BackgroundService
     }
 
     private AppSettings Settings { get; }
+
     private readonly IServiceProvider iocContainer;
 
     /// <summary>
@@ -38,9 +40,16 @@ public class Program : BackgroundService
     {
         var processorLogger = iocContainer.GetRequiredService<ILogger<NopMessageProcessor>>();
 
+        Arn[] queueArns = this.Settings.QueueArnsParsed.ToArray();
+
         List<NopMessageProcessor> listeners = Enumerable.Range(1, this.Settings.ProcessorCount)
-                    .Select(i => new NopMessageProcessor(this.Settings.QueueArnParsed, i.ToString(), processorLogger))
-                    .ToList();
+                    .Select(i => new NopMessageProcessor(
+                        queueArns, 
+                        i.ToString(), 
+                        processorLogger, 
+                        this.Settings.HighPriorityWaitTimeoutSeconds,
+                        this.Settings.VisibilityTimeoutOnProcessingFailureSeconds)
+                    ).ToList();
 
         IEnumerable<Task> listenerTasks = listeners.Select(l => l.Listen(stoppingToken));
         return Task.WhenAll(listenerTasks);
