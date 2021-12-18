@@ -42,16 +42,19 @@ public class Program : BackgroundService
 
         Arn[] queueArns = this.Settings.QueueArnsParsed.ToArray();
 
-        List<NopMessageProcessor> listeners = Enumerable.Range(1, this.Settings.ProcessorCount)
-                    .Select(i => new NopMessageProcessor(
+        // Instantiate processors
+        List<NopMessageProcessor> processors = Enumerable.Range(1, this.Settings.ProcessorCount)
+                    .Select(processorIndex => new NopMessageProcessor(
                         queueArns, 
-                        i.ToString(), 
+                        processorIndex.ToString(), 
                         processorLogger, 
                         this.Settings.HighPriorityWaitTimeoutSeconds,
-                        this.Settings.VisibilityTimeoutOnProcessingFailureSeconds)
+                        this.Settings.VisibilityTimeoutOnProcessingFailureSeconds,
+                        this.Settings.MessageBatchSize)
                     ).ToList();
 
-        IEnumerable<Task> listenerTasks = listeners.Select(l => l.Listen(stoppingToken));
-        return Task.WhenAll(listenerTasks);
+        // Run processor listening loops
+        IEnumerable<Task> processorTasks = processors.Select(p => p.Listen(stoppingToken));
+        return Task.WhenAll(processorTasks);
     }
 }

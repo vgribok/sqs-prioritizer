@@ -27,15 +27,18 @@ namespace SqsProcessorContainer
         protected readonly string _listenerId;
         protected readonly int _highPriorityWaitTimeoutSeconds;
         protected readonly TimeSpan _failureVisibilityTimeout;
+        protected readonly int _messageBatchSize;
         protected readonly ILogger logger;
 
-        public SqsProcessor(Arn[] sqsQueueArns, string listenerId, ILogger logger, int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds)
+        public SqsProcessor(Arn[] sqsQueueArns, string listenerId, ILogger logger, 
+                int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds, int messageBatchSize)
         {
             this.logger = logger;
             _queueArns = sqsQueueArns;
             _listenerId = listenerId;
             _highPriorityWaitTimeoutSeconds = highPriorityWaitTimeoutSeconds;
             _failureVisibilityTimeout = TimeSpan.FromSeconds(failureVisibilityTimeoutSeconds);
+            _messageBatchSize = messageBatchSize;
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _awsregion = RegionEndpoint.GetBySystemName(GetQueueRegion(_queueArns));
@@ -61,7 +64,7 @@ namespace SqsProcessorContainer
             try
             {
                 while(!appExitRequestToken.IsCancellationRequested)
-                    await FetchAndProcess(appExitRequestToken);
+                    await FetchAndProcessAllPrioritiesSequentially(appExitRequestToken);
             }
             catch (TaskCanceledException)
             {
@@ -74,18 +77,33 @@ namespace SqsProcessorContainer
             }
         }
 
-        private async Task FetchAndProcess(CancellationToken cancellationToken)
+        /// <summary>
+        /// Implements priority-based message processing by checking messages from top priority
+        /// to lowest. This approach ensures that higher priority messages are always processed
+        /// ahead of lower priority messages.
+        /// The drawback of this approach is that it employs short or zero polling delays
+        /// resulting in elevated number of SQS requests, affecting SQS cost.
+        /// </summary>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
+        private async Task FetchAndProcessAllPrioritiesSequentially(CancellationToken cancellationToken)
         {
-            for (int queueIndex = 0; queueIndex < _queueArns.Length; queueIndex++) // Going from the highest priority 
+            // Going from the highest priority 
+            for (int queueIndex = 0; 
+                queueIndex < _queueArns.Length && !cancellationToken.IsCancellationRequested; 
+                queueIndex++) 
             {
                 bool isTopPriorityQueue = queueIndex == 0 && _queueArns.Length > 1;
 
                 if (isTopPriorityQueue)
                 {   // A top priority queue with lower priority queues present
                     bool mayHaveMessages = true;
-                    for (int pollingDelaySeconds = _highPriorityWaitTimeoutSeconds ; mayHaveMessages ; pollingDelaySeconds = 0)
+
+                    for (int pollingDelaySeconds = _highPriorityWaitTimeoutSeconds ; 
+                        mayHaveMessages && !cancellationToken.IsCancellationRequested ; 
+                        pollingDelaySeconds = 0) // keep pulling messages from top priority queue for as long there are ones
                     {
-                        mayHaveMessages = await FetchAndProcess(queueIndex, pollingDelaySeconds, cancellationToken, maxMessages: 1);
+                        mayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
                     }
                 }else
                 {   // A single queue or a lower priority queue
@@ -94,22 +112,17 @@ namespace SqsProcessorContainer
                     // If it's a low priority queue, we'll do short polling
                     int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0; 
                     
-                    if (await FetchAndProcess(queueIndex, pollingDelaySeconds, cancellationToken, maxMessages: 1))
-                        // processed messages
+                    if (await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken))
+                        // processed some messages
                         break; // restart processing loop from the highest priority as it may
                     // No messages were processed, continue to the lower priority queue
                 }
             }
         }
 
-        private async Task<bool> FetchAndProcess(int queueIndex, int pollingDelaySeconds, CancellationToken cancellationToken, int maxMessages = 1)
+        private async Task<bool> FetchAndProcessQueueMessageBatch(int queueIndex, int pollingDelaySeconds, CancellationToken cancellationToken)
         {
-            List<Message> messages = await FetchMessagesFromSingleQueueWithLongPoll(
-                        cancellationToken,
-                        _queueUrls[queueIndex],
-                        pollingDelaySeconds,
-                        maxMessages
-                    );
+            List<Message> messages = await FetchMessagesFromSingleQueueWithLongPoll(cancellationToken, queueIndex, pollingDelaySeconds);
             return await ProcessMessages(messages, queueIndex);
         }
 
@@ -127,12 +140,12 @@ namespace SqsProcessorContainer
         }
 
         private async Task<List<Message>> FetchMessagesFromSingleQueueWithLongPoll(
-                    CancellationToken cancellationToken, string queueUrl, int longPollTimeSeconds = 20, int maxMessages = 1)
+                    CancellationToken cancellationToken, int queueIndex, int longPollTimeSeconds)
         {
             var receiveMessageRequest = new ReceiveMessageRequest
             {
-                QueueUrl = queueUrl,
-                MaxNumberOfMessages = maxMessages, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
+                QueueUrl = _queueUrls[queueIndex],
+                MaxNumberOfMessages = _messageBatchSize, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
                 WaitTimeSeconds = longPollTimeSeconds
             };
 

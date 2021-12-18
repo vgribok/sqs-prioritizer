@@ -12,8 +12,13 @@ namespace SqsProcessorContainer
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
-        public NopMessageProcessor(Arn[] queueArns, string processorId, ILogger<NopMessageProcessor> logger, int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds) 
-            : base(queueArns, processorId, logger, highPriorityWaitTimeoutSeconds, failureVisibilityTimeoutSeconds)
+        public NopMessageProcessor(Arn[] queueArns, 
+                                    string processorId, 
+                                    ILogger<NopMessageProcessor> logger, 
+                                    int highPriorityWaitTimeoutSeconds, 
+                                    int failureVisibilityTimeoutSeconds,
+                                    int messageBatchSize) 
+            : base(queueArns, processorId, logger, highPriorityWaitTimeoutSeconds, failureVisibilityTimeoutSeconds, messageBatchSize)
         {
         }
 
