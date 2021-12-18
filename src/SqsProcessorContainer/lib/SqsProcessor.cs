@@ -23,7 +23,6 @@ namespace SqsProcessorContainer
         protected readonly Arn[] _queueArns;
         protected readonly string[] _queueUrls;
         protected readonly RegionEndpoint _awsregion;
-        protected readonly int _longPollingWaitSeconds;
         protected readonly string _listenerId;
         protected readonly int _highPriorityWaitTimeoutSeconds;
         protected readonly TimeSpan _failureVisibilityTimeout;
@@ -42,7 +41,6 @@ namespace SqsProcessorContainer
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _awsregion = RegionEndpoint.GetBySystemName(GetQueueRegion(_queueArns));
-            _longPollingWaitSeconds = 20; // Have it as long as possible
         }
 
         private static string GetQueueRegion(Arn[] queueArns)
@@ -188,7 +186,7 @@ namespace SqsProcessorContainer
                             $"due to \"{ex.Message}\". " +
                             $"Its visibility timeout is set to {failureVisibilityTimeoutSeconds.ToDuration()}");
 
-            logger.LogDebug($"{Id(queueIndex)} message: {message}\ncaused exception {ex}\nand will be retruned to the queue or to DLQ");
+            logger.LogDebug($"{Id(queueIndex)} message: {message}\ncaused exception {ex}\nand will be returned to the queue or to DLQ");
 
             return UpdateMessageVisibilityTimeout(message.ReceiptHandle, queueIndex, failureVisibilityTimeoutSeconds);
         }

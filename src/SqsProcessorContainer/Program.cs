@@ -24,7 +24,7 @@ public class Program : BackgroundService
     /// IoC-friendly constructor with parameters injected by DI container
     /// </summary>
     /// <param name="iocContainer"></param>
-    /// <param name="settings">Injected class representing an app settings section.</param>
+    /// <param name="settings">Injected class representing an application settings section.</param>
     public Program(IServiceProvider iocContainer, AppSettings settings)
     {
         this.iocContainer = iocContainer;

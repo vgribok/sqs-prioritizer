@@ -23,7 +23,7 @@ namespace SqsProcessorContainer
         }
 
         /// <summary>
-        /// An example of message payload processor
+        /// An example of a message payload processor
         /// </summary>
         /// <param name="payload"></param>
         /// <param name="receiptHandle"></param>

@@ -5,8 +5,8 @@ namespace SqsProcessorContainer.Models
     public class AppSettings
     {
         /// <summary>
-        /// Commad-delimited list or queue ARNs.
-        /// Queue pririties are set from the first being highest to the last being lowest.
+        /// Comma-delimited list or queue ARNs.
+        /// Queue priorities are set from the first being highest to the last being lowest.
         /// </summary>
         public string QueueArns{ get; set; } = string.Empty;
 
@@ -27,6 +27,8 @@ namespace SqsProcessorContainer.Models
         /// <summary>
         /// Amount of time the highest priority queue is long-polled for.
         /// This value is ignored if there is only one queue, in which case max long polling time of 20s is used.
+        /// With multiple priority queues longer time will result in better $$ economy due to 
+        /// reduced number of SQS requests, but will result in delays of processing lower-priority queues.
         /// </summary>
         public int HighPriorityWaitTimeoutSeconds { get; set; } = 3;
 
