@@ -108,11 +108,13 @@ namespace SqsProcessorContainer
 
                     // If there's only one queue, use maximum long-polling delay.
                     // If it's a low priority queue, we'll do short polling
-                    int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0; 
-                    
+                    int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0;
+
                     if (await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken))
+                    {
                         // processed some messages
-                        break; // restart processing loop from the highest priority as it may
+                        break; // restart processing loop from the highest priority as higher-priority queues may have gotten messages while we processed this lower-priority one.
+                    }
                     // No messages were processed, continue to the lower priority queue
                 }
             }
