@@ -61,8 +61,12 @@ namespace SqsProcessorContainer
 
             try
             {
-                while(!appExitRequestToken.IsCancellationRequested)
-                    await FetchAndProcessAllPrioritiesSequentially(appExitRequestToken);
+                for (bool firstSweep = true;
+                    !appExitRequestToken.IsCancellationRequested;
+                    firstSweep = false)
+                {
+                    await FetchAndProcessAllPrioritiesSequentially(firstSweep, appExitRequestToken);
+                }
             }
             catch (TaskCanceledException)
             {
@@ -84,7 +88,7 @@ namespace SqsProcessorContainer
         /// </summary>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        private async Task FetchAndProcessAllPrioritiesSequentially(CancellationToken cancellationToken)
+        private async Task FetchAndProcessAllPrioritiesSequentially(bool lowPriorityQueueMayHaveMessages, CancellationToken cancellationToken)
         {
             // Going from the highest priority 
             for (int queueIndex = 0; 
@@ -97,7 +101,7 @@ namespace SqsProcessorContainer
                 {   // A top priority queue with lower priority queues present
                     bool mayHaveMessages = true;
 
-                    for (int pollingDelaySeconds = _highPriorityWaitTimeoutSeconds ; 
+                    for (int pollingDelaySeconds = lowPriorityQueueMayHaveMessages ? 0 : _highPriorityWaitTimeoutSeconds; // Do long polling of high-prty queue only if we think low-prty are empty, short-poll otherwise.
                         mayHaveMessages && !cancellationToken.IsCancellationRequested ; 
                         pollingDelaySeconds = 0) // keep pulling messages from top priority queue for as long there are ones
                     {
@@ -110,10 +114,12 @@ namespace SqsProcessorContainer
                     // If it's a low priority queue, we'll do short polling
                     int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0;
 
-                    if (await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken))
+                    lowPriorityQueueMayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
+
+                    if (lowPriorityQueueMayHaveMessages)
                     {
                         // processed some messages
-                        break; // restart processing loop from the highest priority as higher-priority queues may have gotten messages while we processed this lower-priority one.
+                        queueIndex = -1; // Restart from the highest-priority queue without breaking the loop
                     }
                     // No messages were processed, continue to the lower priority queue
                 }
