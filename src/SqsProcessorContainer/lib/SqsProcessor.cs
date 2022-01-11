@@ -86,8 +86,16 @@ namespace SqsProcessorContainer
         /// The drawback of this approach is that it employs short or zero polling delays
         /// resulting in elevated number of SQS requests, affecting SQS cost.
         /// </summary>
+        /// <param name="lowPriorityQueueMayHaveMessages">Should be set to true on the first sweep, false on all subsequent.</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
+        /// <remarks>
+        /// What this methods does:
+        /// - Key requirement: ensures that messages from higher-priority queue are *always* picked for processing before messages from lower priority queues.
+        /// - Queue are short-polled for as long as there are messages in them. Once all queues go empty, highest priority queue is long-polled.
+        /// - Having to short-polled low-priority queues results in burning SQS requests. This is the price to pay for having priority queues done with SQS.
+        /// See project README.MD for details of trade-offs.
+        /// </remarks>
         private async Task FetchAndProcessAllPrioritiesSequentially(bool lowPriorityQueueMayHaveMessages, CancellationToken cancellationToken)
         {
             // Going from the highest priority 
