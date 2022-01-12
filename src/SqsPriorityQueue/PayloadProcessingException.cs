@@ -1,4 +1,6 @@
-﻿namespace SqsProcessorContainer
+﻿#nullable enable
+
+namespace SqsProcessorContainer
 {
     public class PayloadProcessingException : Exception
     {

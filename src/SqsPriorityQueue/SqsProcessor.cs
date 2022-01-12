@@ -13,7 +13,8 @@ using Microsoft.Extensions.Logging;
 namespace SqsProcessorContainer
 {
     /// <summary>
-    /// Base class for container-friendly, thread-safe, long-polling but cancellable SQS message processor.
+    /// Base class for container-friendly, thread-safe, long-polling and cancellable SQS message processor
+    /// for multiple priority-based SQS queues.
     /// </summary>
     /// <typeparam name="TMsgModel">Queue message model</typeparam>
     public abstract class SqsProcessor<TMsgModel>
@@ -55,6 +56,11 @@ namespace SqsProcessorContainer
 
         protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {_listenerId}";
 
+        /// <summary>
+        /// Main message polling and processing loop.
+        /// </summary>
+        /// <param name="appExitRequestToken">Application/container exit signal propagator</param>
+        /// <returns></returns>
         public async Task Listen(CancellationToken appExitRequestToken)
         {
             logger.LogInformation($"Started listener loop for {_listenerId}.");
@@ -140,6 +146,13 @@ namespace SqsProcessorContainer
             return await ProcessMessages(messages, queueIndex);
         }
 
+        /// <summary>
+        /// Returns true of there were messages to process.
+        /// Returns false if input message collection was empty.
+        /// </summary>
+        /// <param name="messages"></param>
+        /// <param name="queueIndex"></param>
+        /// <returns></returns>
         private async Task<bool> ProcessMessages(List<Message> messages, int queueIndex)
         {
             if (messages.Count == 0)
@@ -168,6 +181,9 @@ namespace SqsProcessorContainer
             return receiveMsgReponse.Messages;
         }
 
+        protected virtual TMsgModel DeserializeMessage(string messageBody)
+            => JsonSerializer.Deserialize<TMsgModel>(messageBody)!;
+
         /// <summary>
         /// A fake/mock job processor that can "process" the message and throw an exception. 
         /// It can also change message visibility timeout.
@@ -182,7 +198,7 @@ namespace SqsProcessorContainer
             {
                 try
                 {
-                    TMsgModel payload = JsonSerializer.Deserialize<TMsgModel>(message.Body)!;
+                    TMsgModel payload = this.DeserializeMessage(message.Body); 
                     await ProcessPayload(payload, message.ReceiptHandle, queueIndex, message.MessageId);
                 }catch (Exception ex)
                 {
@@ -196,6 +212,16 @@ namespace SqsProcessorContainer
             }
         }
 
+        /// <summary>
+        /// Provides ability to handle message processing errors.
+        /// Default behavior is to put the message back into the queue for a re-try 
+        /// after the delay of <see cref="_failureVisibilityTimeout"/>.
+        /// </summary>
+        /// <param name="ex">Exception thrown during message processing.</param>
+        /// <param name="message">SQS message being processed</param>
+        /// <param name="queueIndex">Queue index/priority</param>
+        /// <param name="failureVisibilityTimeoutSeconds">Configuration setting value for failed message visibility timeout.</param>
+        /// <returns></returns>
         protected virtual Task HandlePayloadProcessingException(Exception ex, Message message, int queueIndex, TimeSpan failureVisibilityTimeoutSeconds)
         {
             logger.LogError($"{Id(queueIndex)} Failed to process message {message.MessageId} " +
