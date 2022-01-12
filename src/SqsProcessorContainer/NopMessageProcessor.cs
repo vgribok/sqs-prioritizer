@@ -4,6 +4,7 @@ using Amazon;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Logging;
 using SqsDelay;
+using SqsProcessorContainer.Models;
 
 namespace SqsProcessorContainer
 {
@@ -12,13 +13,12 @@ namespace SqsProcessorContainer
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
-        public NopMessageProcessor(Arn[] queueArns, 
-                                    string processorId, 
-                                    ILogger<NopMessageProcessor> logger, 
-                                    int highPriorityWaitTimeoutSeconds, 
-                                    int failureVisibilityTimeoutSeconds,
-                                    int messageBatchSize) 
-            : base(queueArns, processorId, logger, highPriorityWaitTimeoutSeconds, failureVisibilityTimeoutSeconds, messageBatchSize)
+        public NopMessageProcessor(AppSettings settings, ILogger<NopMessageProcessor> logger) 
+            : base(settings.QueueArnsParsed.ToArray(), 
+                  logger,
+                  settings.HighPriorityWaitTimeoutSeconds,
+                  settings.VisibilityTimeoutOnProcessingFailureSeconds,
+                  settings.MessageBatchSize)
         {
         }
 

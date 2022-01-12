@@ -9,6 +9,7 @@ using Amazon.SQS.Model;
 
 using aws_sdk_extensions;
 using Microsoft.Extensions.Logging;
+using SqsPriorityQueue;
 
 namespace SqsProcessorContainer
 {
@@ -17,25 +18,25 @@ namespace SqsProcessorContainer
     /// for multiple priority-based SQS queues.
     /// </summary>
     /// <typeparam name="TMsgModel">Queue message model</typeparam>
-    public abstract class SqsProcessor<TMsgModel>
+    public abstract class SqsProcessor<TMsgModel> : IPriorityQueueProcessor
     {
         public const int maxLongPollingTimeSeconds = 20;
 
         protected readonly Arn[] _queueArns;
         protected readonly string[] _queueUrls;
         protected readonly RegionEndpoint _awsregion;
-        protected readonly string _listenerId;
         protected readonly int _highPriorityWaitTimeoutSeconds;
         protected readonly TimeSpan _failureVisibilityTimeout;
         protected readonly int _messageBatchSize;
         protected readonly ILogger logger;
 
-        public SqsProcessor(Arn[] sqsQueueArns, string listenerId, ILogger logger, 
+        public string? ListenerId { get; set; }
+
+        public SqsProcessor(Arn[] sqsQueueArns, ILogger logger, 
                 int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds, int messageBatchSize)
         {
             this.logger = logger;
             _queueArns = sqsQueueArns;
-            _listenerId = listenerId;
             _highPriorityWaitTimeoutSeconds = highPriorityWaitTimeoutSeconds;
             _failureVisibilityTimeout = TimeSpan.FromSeconds(failureVisibilityTimeoutSeconds);
             _messageBatchSize = messageBatchSize;
@@ -54,7 +55,7 @@ namespace SqsProcessorContainer
 
         private AmazonSQSClient GetSqsClient() => new(_awsregion);
 
-        protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {_listenerId}";
+        protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {this.ListenerId}";
 
         /// <summary>
         /// Main message polling and processing loop.
@@ -63,7 +64,10 @@ namespace SqsProcessorContainer
         /// <returns></returns>
         public async Task Listen(CancellationToken appExitRequestToken)
         {
-            logger.LogInformation($"Started listener loop for {_listenerId}.");
+            if(this.ListenerId == null)
+                throw new ArgumentNullException(nameof(this.ListenerId), "Listener Id must be set before listening loop is started.");
+
+            logger.LogInformation($"Started listener loop for {Id}.");
 
             try
             {
@@ -76,11 +80,11 @@ namespace SqsProcessorContainer
             }
             catch (TaskCanceledException)
             {
-                logger.LogInformation($"Queue processor {_listenerId} is terminated by cancellation request");
+                logger.LogInformation($"Queue processor {Id} is terminated by cancellation request");
             }
             catch (Exception ex)
             {
-                logger.LogInformation($"Message listener {_listenerId} threw exception and stopped: { ex.Message}");
+                logger.LogInformation($"Message listener {Id} threw exception and stopped: { ex.Message}");
                 throw;
             }
         }

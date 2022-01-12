@@ -1,36 +1,36 @@
 ﻿#nullable enable
 
-using Amazon;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+using SqsPriorityQueue;
 using SqsProcessorContainer;
 using SqsProcessorContainer.Models;
 
-public class Program : BackgroundService
+internal class Program : BackgroundService
 {
     public static Task Main(string[] args) => ConsoleApp.Init<Program>(args, ConfigureServices);
 
     private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
     {
         services.RegisterAppSettingsSection<AppSettings>(context.Configuration);
+
+        services.RegisterProcessors<NopMessageProcessor>(isTheOnlyProcessorType: true, ProcessorCountFactory);
     }
 
-    private AppSettings Settings { get; }
+    private static int ProcessorCountFactory(IServiceProvider ioc, Type processorType)
+        => ioc.GetRequiredService<AppSettings>().ProcessorCount;
 
-    private readonly IServiceProvider iocContainer;
+    private readonly List<NopMessageProcessor> processors;
 
     /// <summary>
     /// IoC-friendly constructor with parameters injected by DI container
     /// </summary>
-    /// <param name="iocContainer"></param>
-    /// <param name="settings">Injected class representing an application settings section.</param>
-    public Program(IServiceProvider iocContainer, AppSettings settings)
+    /// <param name="processors">Collection of processor instances</param>
+    public Program(IEnumerable<NopMessageProcessor> processors)
     {
-        this.iocContainer = iocContainer;
-        this.Settings = settings;
+        this.processors = processors.ToList();
     }
-    
+
     /// <summary>
     /// Main service/daemon execution loop
     /// </summary>
@@ -38,21 +38,6 @@ public class Program : BackgroundService
     /// <returns></returns>
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var processorLogger = iocContainer.GetRequiredService<ILogger<NopMessageProcessor>>();
-
-        Arn[] queueArns = this.Settings.QueueArnsParsed.ToArray();
-
-        // Instantiate processors
-        List<NopMessageProcessor> processors = Enumerable.Range(1, this.Settings.ProcessorCount)
-                    .Select(processorIndex => new NopMessageProcessor(
-                        queueArns, 
-                        processorIndex.ToString(), 
-                        processorLogger, 
-                        this.Settings.HighPriorityWaitTimeoutSeconds,
-                        this.Settings.VisibilityTimeoutOnProcessingFailureSeconds,
-                        this.Settings.MessageBatchSize)
-                    ).ToList();
-
         // Run processor listening loops
         IEnumerable<Task> processorTasks = processors.Select(p => p.Listen(stoppingToken));
         return Task.WhenAll(processorTasks);

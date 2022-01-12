@@ -12,12 +12,11 @@ namespace SqsProcessorContainer
     public abstract class TextMessageProcessor : SqsProcessor<string>
     {
         public TextMessageProcessor(Arn[] queueArns,
-                                    string processorId,
                                     ILogger<TextMessageProcessor> logger,
                                     int highPriorityWaitTimeoutSeconds,
                                     int failureVisibilityTimeoutSeconds,
                                     int messageBatchSize)
-            : base(queueArns, processorId, logger, highPriorityWaitTimeoutSeconds, failureVisibilityTimeoutSeconds, messageBatchSize)
+            : base(queueArns, logger, highPriorityWaitTimeoutSeconds, failureVisibilityTimeoutSeconds, messageBatchSize)
         {
         }
 
