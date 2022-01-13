@@ -32,14 +32,13 @@ namespace SqsProcessorContainer
 
         public string? ListenerId { get; set; }
 
-        public SqsProcessor(Arn[] sqsQueueArns, ILogger logger, 
-                int highPriorityWaitTimeoutSeconds, int failureVisibilityTimeoutSeconds, int messageBatchSize)
+        public SqsProcessor(SqsPrioritySettings settings, ILogger logger)
         {
             this.logger = logger;
-            _queueArns = sqsQueueArns;
-            _highPriorityWaitTimeoutSeconds = highPriorityWaitTimeoutSeconds;
-            _failureVisibilityTimeout = TimeSpan.FromSeconds(failureVisibilityTimeoutSeconds);
-            _messageBatchSize = messageBatchSize;
+            _queueArns = settings.QueueArnsParsed.ToArray();
+            _highPriorityWaitTimeoutSeconds = settings.HighPriorityWaitTimeoutSeconds;
+            _failureVisibilityTimeout = TimeSpan.FromSeconds(settings.VisibilityTimeoutOnProcessingFailureSeconds);
+            _messageBatchSize = settings.MessageBatchSize;
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();

@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SqsPriorityQueue;
 using SqsProcessorContainer;
-using SqsProcessorContainer.Models;
 
 internal class Program : BackgroundService
 {
@@ -12,13 +11,13 @@ internal class Program : BackgroundService
 
     private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
     {
-        services.RegisterAppSettingsSection<AppSettings>(context.Configuration);
+        services.RegisterAppSettingsSection<SqsPrioritySettings>(context.Configuration);
 
         services.RegisterProcessors<NopMessageProcessor>(isTheOnlyProcessorType: true, ProcessorCountFactory);
     }
 
     private static int ProcessorCountFactory(IServiceProvider ioc, Type processorType)
-        => ioc.GetRequiredService<AppSettings>().ProcessorCount;
+        => ioc.GetRequiredService<SqsPrioritySettings>().ProcessorCount;
 
     private readonly List<NopMessageProcessor> processors;
 

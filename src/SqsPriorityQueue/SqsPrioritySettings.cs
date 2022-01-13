@@ -1,8 +1,8 @@
 ﻿using Amazon;
 
-namespace SqsProcessorContainer.Models
+namespace SqsProcessorContainer
 {
-    public class AppSettings
+    public class SqsPrioritySettings
     {
         /// <summary>
         /// Comma-delimited list or queue ARNs.
