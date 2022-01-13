@@ -24,7 +24,7 @@ namespace SqsProcessorContainer
 
         protected readonly Arn[] _queueArns;
         protected readonly string[] _queueUrls;
-        protected readonly RegionEndpoint _awsregion;
+        protected readonly RegionEndpoint[] _queueRegions;
         protected readonly int _highPriorityWaitTimeoutSeconds;
         protected readonly TimeSpan _failureVisibilityTimeout;
         protected readonly int _messageBatchSize;
@@ -42,18 +42,10 @@ namespace SqsProcessorContainer
             _messageBatchSize = messageBatchSize;
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
-            _awsregion = RegionEndpoint.GetBySystemName(GetQueueRegion(_queueArns));
+            _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
         }
 
-        private static string GetQueueRegion(Arn[] queueArns)
-        {
-            string[] regions = queueArns.Select(arn => arn.Region).Distinct().ToArray();
-            if (regions.Length > 1)
-                throw new ArgumentException($"All queues must belong to the same region", nameof(queueArns));
-            return regions[0];
-        }
-
-        private AmazonSQSClient GetSqsClient() => new(_awsregion);
+        private AmazonSQSClient GetSqsClient(int queueIndex) => new AmazonSQSClient(_queueRegions[queueIndex]);
 
         protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {this.ListenerId}";
 
@@ -180,7 +172,7 @@ namespace SqsProcessorContainer
                 WaitTimeSeconds = longPollTimeSeconds
             };
 
-            using var sqsClient = GetSqsClient();
+            using var sqsClient = GetSqsClient(queueIndex);
             var receiveMsgReponse = await sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
             return receiveMsgReponse.Messages;
         }
@@ -263,7 +255,7 @@ namespace SqsProcessorContainer
                 QueueUrl = _queueUrls[queueIndex],
                 ReceiptHandle = message.ReceiptHandle
             };
-            using var sqsClient = GetSqsClient();
+            using var sqsClient = GetSqsClient(queueIndex);
             DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
             logger.LogDebug($"{Id(queueIndex)} deleted message with Id: \"{message.MessageId}\"");
@@ -288,7 +280,7 @@ namespace SqsProcessorContainer
                 DelaySeconds = delaySeconds
             };
             
-            using var sqsClient = GetSqsClient();
+            using var sqsClient = GetSqsClient(queueIndex);
 
             var response = await sqsClient.SendMessageAsync(sendMessageRequest);
             
