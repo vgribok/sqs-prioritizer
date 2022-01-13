@@ -67,7 +67,7 @@ namespace SqsProcessorContainer
             if(this.ListenerId == null)
                 throw new ArgumentNullException(nameof(this.ListenerId), "Listener Id must be set before listening loop is started.");
 
-            logger.LogInformation($"Started listener loop for {Id}.");
+            logger.LogInformation($"Started linstening loop for processor {this.ListenerId}.");
 
             try
             {
@@ -80,11 +80,11 @@ namespace SqsProcessorContainer
             }
             catch (TaskCanceledException)
             {
-                logger.LogInformation($"Queue processor {Id} is terminated by cancellation request");
+                logger.LogInformation($"Queue processor {this.ListenerId} is terminated by cancellation request");
             }
             catch (Exception ex)
             {
-                logger.LogInformation($"Message listener {Id} threw exception and stopped: { ex.Message}");
+                logger.LogInformation($"Message processor {this.ListenerId} threw exception and stopped: { ex.Message}");
                 throw;
             }
         }
@@ -188,6 +188,9 @@ namespace SqsProcessorContainer
         protected virtual TMsgModel DeserializeMessage(string messageBody)
             => JsonSerializer.Deserialize<TMsgModel>(messageBody)!;
 
+        protected virtual string SerializeMessage(TMsgModel model)
+            => model!.GetType() == typeof(string) ? (model as string)! : JsonSerializer.Serialize(model);
+
         /// <summary>
         /// A fake/mock job processor that can "process" the message and throw an exception. 
         /// It can also change message visibility timeout.
@@ -264,6 +267,34 @@ namespace SqsProcessorContainer
             DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
             logger.LogDebug($"{Id(queueIndex)} deleted message with Id: \"{message.MessageId}\"");
+        }
+
+        /// <summary>
+        /// Re-sends message to the queue where it was picked from.
+        /// </summary>
+        /// <param name="messageBody">Message body, could be modified since last pick</param>
+        /// <param name="queueIndex"></param>
+        /// <param name="delaySeconds">Optional delay before message re-appears in the queue</param>
+        /// <returns></returns>
+        /// <remarks>
+        /// To ensure no message duplications, please ensure that original message is not returned back by throwing an exception.
+        /// </remarks>
+        protected async Task<SendMessageResponse> ReturnMessageToQueue(TMsgModel payload, int queueIndex, int delaySeconds = 0)
+        {
+            var sendMessageRequest = new SendMessageRequest
+            {
+                QueueUrl = _queueUrls[queueIndex],
+                MessageBody = this.SerializeMessage(payload),
+                DelaySeconds = delaySeconds
+            };
+            
+            using var sqsClient = GetSqsClient();
+
+            var response = await sqsClient.SendMessageAsync(sendMessageRequest);
+            
+            logger.LogDebug($"Returned message \"{sendMessageRequest.MessageBody}\" to {Id(queueIndex)} with delay of {delaySeconds} seconds.");
+            
+            return response;
         }
     }
 }
