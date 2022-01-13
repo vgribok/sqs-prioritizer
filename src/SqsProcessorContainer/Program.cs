@@ -1,5 +1,8 @@
 ﻿#nullable enable
 
+using Amazon.Extensions.NETCore.Setup;
+using Amazon.SQS;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SqsPriorityQueue;
@@ -12,6 +15,11 @@ internal class Program : BackgroundService
     private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
     {
         services.RegisterAppSettingsSection<SqsPrioritySettings>(context.Configuration);
+
+        // Register Amazon services
+        AWSOptions? awsSettings = context.Configuration.GetAWSOptions();
+        services.AddDefaultAWSOptions(awsSettings);
+        services.AddAWSService<IAmazonSQS>();
 
         services.RegisterProcessors<NopMessageProcessor>(isTheOnlyProcessorType: true, ProcessorCountFactory);
     }

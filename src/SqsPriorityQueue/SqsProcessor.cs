@@ -28,23 +28,23 @@ namespace SqsProcessorContainer
         protected readonly int _highPriorityWaitTimeoutSeconds;
         protected readonly TimeSpan _failureVisibilityTimeout;
         protected readonly int _messageBatchSize;
+        private readonly IAmazonSQS _sqsClient;
         protected readonly ILogger logger;
 
         public string? ListenerId { get; set; }
 
-        public SqsProcessor(SqsPrioritySettings settings, ILogger logger)
+        public SqsProcessor(SqsPrioritySettings settings, ILogger logger, IAmazonSQS sqsClient)
         {
             this.logger = logger;
             _queueArns = settings.QueueArnsParsed.ToArray();
             _highPriorityWaitTimeoutSeconds = settings.HighPriorityWaitTimeoutSeconds;
             _failureVisibilityTimeout = TimeSpan.FromSeconds(settings.VisibilityTimeoutOnProcessingFailureSeconds);
             _messageBatchSize = settings.MessageBatchSize;
+            _sqsClient = sqsClient;
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
         }
-
-        private AmazonSQSClient GetSqsClient(int queueIndex) => new AmazonSQSClient(_queueRegions[queueIndex]);
 
         protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {this.ListenerId}";
 
@@ -58,7 +58,7 @@ namespace SqsProcessorContainer
             if(this.ListenerId == null)
                 throw new ArgumentNullException(nameof(this.ListenerId), "Listener Id must be set before listening loop is started.");
 
-            logger.LogInformation($"Started linstening loop for processor {this.ListenerId}.");
+            logger.LogInformation($"Started listening loop for processor {this.ListenerId}.\nSource queues:\n{string.Join(",\n", _queueArns.AsEnumerable())}");
 
             try
             {
@@ -171,8 +171,7 @@ namespace SqsProcessorContainer
                 WaitTimeSeconds = longPollTimeSeconds
             };
 
-            using var sqsClient = GetSqsClient(queueIndex);
-            var receiveMsgReponse = await sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
+            var receiveMsgReponse = await _sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
             return receiveMsgReponse.Messages;
         }
 
@@ -254,8 +253,7 @@ namespace SqsProcessorContainer
                 QueueUrl = _queueUrls[queueIndex],
                 ReceiptHandle = message.ReceiptHandle
             };
-            using var sqsClient = GetSqsClient(queueIndex);
-            DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
+            DeleteMessageResponse response = await _sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
             logger.LogDebug($"{Id(queueIndex)} deleted message with Id: \"{message.MessageId}\"");
         }
@@ -279,9 +277,7 @@ namespace SqsProcessorContainer
                 DelaySeconds = delaySeconds
             };
             
-            using var sqsClient = GetSqsClient(queueIndex);
-
-            var response = await sqsClient.SendMessageAsync(sendMessageRequest);
+            var response = await _sqsClient.SendMessageAsync(sendMessageRequest);
             
             logger.LogDebug($"Returned message \"{sendMessageRequest.MessageBody}\" to {Id(queueIndex)} with delay of {delaySeconds} seconds.");
             

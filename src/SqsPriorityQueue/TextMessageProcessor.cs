@@ -1,5 +1,6 @@
 ﻿#nullable enable
 
+using Amazon.SQS;
 using Microsoft.Extensions.Logging;
 
 namespace SqsProcessorContainer
@@ -10,8 +11,8 @@ namespace SqsProcessorContainer
     /// </summary>
     public abstract class TextMessageProcessor : SqsProcessor<string>
     {
-        public TextMessageProcessor(SqsPrioritySettings settings, ILogger<TextMessageProcessor> logger)
-            : base(settings, logger)
+        public TextMessageProcessor(SqsPrioritySettings settings, ILogger<TextMessageProcessor> logger, IAmazonSQS sqsClient)
+            : base(settings, logger, sqsClient)
         {
         }
 

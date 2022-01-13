@@ -1,5 +1,6 @@
 ﻿#nullable enable
 
+using Amazon.SQS;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Logging;
 using SqsDelay;
@@ -11,8 +12,8 @@ namespace SqsProcessorContainer
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {
-        public NopMessageProcessor(SqsPrioritySettings settings, ILogger<NopMessageProcessor> logger) 
-            : base(settings, logger)
+        public NopMessageProcessor(SqsPrioritySettings settings, ILogger<NopMessageProcessor> logger, IAmazonSQS sqsClient) 
+            : base(settings, logger, sqsClient)
         {
         }
 
