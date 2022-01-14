@@ -138,7 +138,7 @@ namespace SqsProcessorContainer
         private async Task<bool> FetchAndProcessQueueMessageBatch(int queueIndex, int pollingDelaySeconds, CancellationToken cancellationToken)
         {
             List<Message> messages = await FetchMessagesFromSingleQueueWithLongPoll(cancellationToken, queueIndex, pollingDelaySeconds);
-            return await ProcessMessages(messages, queueIndex);
+            return await ProcessMessages(messages, queueIndex, cancellationToken);
         }
 
         /// <summary>
@@ -148,7 +148,7 @@ namespace SqsProcessorContainer
         /// <param name="messages"></param>
         /// <param name="queueIndex"></param>
         /// <returns></returns>
-        private async Task<bool> ProcessMessages(List<Message> messages, int queueIndex)
+        private async Task<bool> ProcessMessages(List<Message> messages, int queueIndex, CancellationToken cancellationToken)
         {
             if (messages.Count == 0)
             {
@@ -156,7 +156,7 @@ namespace SqsProcessorContainer
                 return false;
             }
 
-            IEnumerable<Task> processors = messages.Select(m => ProcessMessage(m, queueIndex));
+            IEnumerable<Task> processors = messages.Select(m => ProcessMessage(m, queueIndex, cancellationToken));
             await Task.WhenAll(processors);
             return true;
         }
@@ -188,7 +188,7 @@ namespace SqsProcessorContainer
         /// <param name="message"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        private async Task ProcessMessage(Message message, int queueIndex)
+        private async Task ProcessMessage(Message message, int queueIndex, CancellationToken cancellationToken)
         {
             logger.LogDebug($"{Id(queueIndex)} Received message with id {message.MessageId} and body: \"{message.Body}\"");
             try
@@ -196,7 +196,7 @@ namespace SqsProcessorContainer
                 try
                 {
                     TMsgModel payload = this.DeserializeMessage(message.Body); 
-                    await ProcessPayload(payload, message.ReceiptHandle, queueIndex, message.MessageId);
+                    await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
                 }catch (Exception ex)
                 {
                     throw new PayloadProcessingException(ex);
@@ -225,8 +225,10 @@ namespace SqsProcessorContainer
                             $"due to \"{ex.Message}\". " +
                             $"Its visibility timeout is set to {failureVisibilityTimeoutSeconds.ToDuration()}");
 
-            logger.LogDebug($"{Id(queueIndex)} message: {message}\ncaused exception {ex}\nand will be returned to the queue or to DLQ");
+            logger.LogDebug($"{Id(queueIndex)} message: {message}\ncaused exception {ex}\nand will be returned to the queue for re-processing, or to DLQ");
 
+            // Returns message to either to the original queue or to a DLQ. If former, the message will be
+            // re-tried after delay of failureVisibilityTimeoutSeconds.
             return UpdateMessageVisibilityTimeout(message.ReceiptHandle, queueIndex, failureVisibilityTimeoutSeconds);
         }
 
@@ -238,7 +240,7 @@ namespace SqsProcessorContainer
         /// <param name="queueIndex"></param>
         /// <param name="messageId"></param>
         /// <returns></returns>
-        protected abstract Task ProcessPayload(TMsgModel payload, string receiptHandle, int queueIndex, string messageId);
+        protected abstract Task ProcessPayload(TMsgModel payload, CancellationToken cancellationToken, string receiptHandle, int queueIndex, string messageId);
 
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, int queueIndex, TimeSpan visibilityTimeout)
         {

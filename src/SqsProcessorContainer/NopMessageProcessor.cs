@@ -21,12 +21,13 @@ namespace SqsProcessorContainer
         /// An example of a message payload processor
         /// </summary>
         /// <param name="payload"></param>
+        /// <param name="cancellationToken"></param>
         /// <param name="receiptHandle"></param>
         /// <param name="queueIndex"></param>
         /// <param name="messageId"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        protected override async Task ProcessPayload(MessageModel payload, string receiptHandle, int queueIndex, string messageId)
+        protected override async Task ProcessPayload(MessageModel payload, CancellationToken cancellationToken, string receiptHandle, int queueIndex, string messageId)
         {
             if (payload.Return ?? false)
             {
