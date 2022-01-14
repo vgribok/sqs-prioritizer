@@ -175,9 +175,19 @@ namespace SqsProcessorContainer
             return receiveMsgReponse.Messages;
         }
 
+        /// <summary>
+        /// Default implementation uses <see cref="JsonSerializer"/> to convert JSON into strongly-typed object.
+        /// </summary>
+        /// <param name="messageBody"></param>
+        /// <returns></returns>
         protected virtual TMsgModel DeserializeMessage(string messageBody)
             => JsonSerializer.Deserialize<TMsgModel>(messageBody)!;
 
+        /// <summary>
+        /// Default implementation uses <see cref="JsonSerializer"/> to convert object to JSON.
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
         protected virtual string SerializeMessage(TMsgModel model)
             => model!.GetType() == typeof(string) ? (model as string)! : JsonSerializer.Serialize(model);
 
@@ -193,20 +203,20 @@ namespace SqsProcessorContainer
             logger.LogDebug($"{Id(queueIndex)} Received message with id {message.MessageId} and body: \"{message.Body}\"");
             try
             {
-                try
-                {
-                    TMsgModel payload = this.DeserializeMessage(message.Body); 
-                    await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
-                }catch (Exception ex)
-                {
-                    throw new PayloadProcessingException(ex);
-                }
-                await DeleteMessageAsync(message, queueIndex);
-            }
-            catch (PayloadProcessingException ex)
+                TMsgModel payload = this.DeserializeMessage(message.Body); 
+                await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
+            }catch (Exception ex)
             {
+                // Failed to process the message.
+                // Default implementation of HandlePayloadProcessingException() will return failed
+                // message back to the queue (or to the DQL) by setting message visibility timeout to _failureVisibilityTimeout.
                 await HandlePayloadProcessingException(ex, message, queueIndex, _failureVisibilityTimeout);
+                return;
             }
+
+            // Message processed successfully.
+            // Delete message from the queue after successful processing.
+            await DeleteMessageAsync(message, queueIndex);
         }
 
         /// <summary>
