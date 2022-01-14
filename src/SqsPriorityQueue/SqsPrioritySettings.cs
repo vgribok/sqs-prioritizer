@@ -40,7 +40,10 @@ namespace SqsProcessorContainer
 
         #region Computed Properties
 
-        public IEnumerable<string> QueueArnCollection => QueueArns.Split(',').Select(x => x.Trim());
+        public IEnumerable<string> QueueArnCollection => from arnString in QueueArns.Split(',')
+                                                         let arn = arnString.Trim()
+                                                         where !string.IsNullOrWhiteSpace(arn)
+                                                         select arn;
 
         public IEnumerable<Arn> QueueArnsParsed => QueueArnCollection.Select(Arn.Parse);
 

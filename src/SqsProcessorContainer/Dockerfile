@@ -1,4 +1,4 @@
-﻿#See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
+#See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
 # To build, execute this command from the directory of the Dockerfile:
 # docker build -f Dockerfile .. -t sqsprocessor:latest
@@ -19,6 +19,8 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
 COPY ["SqsProcessorContainer/SqsProcessorContainer.csproj", "SqsProcessorContainer/"]
+COPY ["SqsPriorityQueue/SqsPriorityQueue.csproj", "SqsPriorityQueue/"]
+COPY ["aws-sdk-extensions/aws-sdk-extensions.csproj", "aws-sdk-extensions/"]
 RUN dotnet restore SqsProcessorContainer/SqsProcessorContainer.csproj
 COPY . .
 WORKDIR /src/SqsProcessorContainer

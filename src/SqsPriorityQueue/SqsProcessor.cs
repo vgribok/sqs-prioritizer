@@ -36,7 +36,11 @@ namespace SqsProcessorContainer
         public SqsProcessor(SqsPrioritySettings settings, ILogger logger, IAmazonSQS sqsClient)
         {
             this.logger = logger;
+            
             _queueArns = settings.QueueArnsParsed.ToArray();
+            if (_queueArns.Length == 0)
+                throw new ArgumentNullException(nameof(settings.QueueArnCollection), "Queue ARN collection cannot be empty.");
+
             _highPriorityWaitTimeoutSeconds = settings.HighPriorityWaitTimeoutSeconds;
             _failureVisibilityTimeout = TimeSpan.FromSeconds(settings.VisibilityTimeoutOnProcessingFailureSeconds);
             _messageBatchSize = settings.MessageBatchSize;

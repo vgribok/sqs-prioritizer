@@ -5,6 +5,21 @@
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }
+    },
+    "WSL": {
+      "commandName": "WSL2",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "distributionName": ""
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "AWS_ACCESS_KEY_ID": "CHANGE BUT DO NOT COMMIT!",
+        "AWS_SECRET_ACCESS_KEY": "CHANGE BUT DO NOT COMMIT!"
+      }
     }
   }
 }

@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+  sqsprocessorcontainer:
+    image: ${DOCKER_REGISTRY-}sqsprocessorcontainer
+    build:
+      context: .
+      dockerfile: SqsProcessorContainer/Dockerfile
