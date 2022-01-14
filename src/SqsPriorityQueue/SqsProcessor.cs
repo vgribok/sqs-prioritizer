@@ -205,7 +205,8 @@ namespace SqsProcessorContainer
             {
                 TMsgModel payload = this.DeserializeMessage(message.Body); 
                 await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
-            }catch (Exception ex)
+            }
+            catch (Exception ex)
             {
                 // Failed to process the message.
                 // Default implementation of HandlePayloadProcessingException() will return failed
@@ -235,7 +236,7 @@ namespace SqsProcessorContainer
                             $"due to \"{ex.Message}\". " +
                             $"Its visibility timeout is set to {failureVisibilityTimeoutSeconds.ToDuration()}");
 
-            logger.LogDebug($"{Id(queueIndex)} message: {message}\ncaused exception {ex}\nand will be returned to the queue for re-processing, or to DLQ");
+            logger.LogDebug($"{Id(queueIndex)} message: \"{message.Body}\"\ncaused exception and will be returned to the queue for re-processing, or to DLQ:\n{ex}");
 
             // Returns message to either to the original queue or to a DLQ. If former, the message will be
             // re-tried after delay of failureVisibilityTimeoutSeconds.
