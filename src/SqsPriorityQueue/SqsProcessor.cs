@@ -49,7 +49,6 @@ namespace SqsProcessorContainer
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
         }
-
         protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {this.ListenerId}";
 
         /// <summary>
@@ -62,25 +61,29 @@ namespace SqsProcessorContainer
             if(this.ListenerId == null)
                 throw new ArgumentNullException(nameof(this.ListenerId), "Listener Id must be set before listening loop is started.");
 
-            logger.LogInformation($"Started listening loop for processor {this.ListenerId}.\nSource queues:\n{string.Join(",\n", _queueArns.AsEnumerable())}");
+            using (logger.BeginScope("ProcessorId={ProcessorId}", this.ListenerId))
+            {
+                logger.LogInformation("Started listening loop for source queues: {QueueArnsCommaDelimited}",
+                    string.Join(",", _queueArns.AsEnumerable()));
 
-            try
-            {
-                for (bool firstSweep = true;
-                    !appExitRequestToken.IsCancellationRequested;
-                    firstSweep = false)
+                try
                 {
-                    await FetchAndProcessAllPrioritiesSequentially(firstSweep, appExitRequestToken);
+                    for (bool firstSweep = true;
+                        !appExitRequestToken.IsCancellationRequested;
+                        firstSweep = false)
+                    {
+                        await FetchAndProcessAllPrioritiesSequentially(firstSweep, appExitRequestToken);
+                    }
                 }
-            }
-            catch (TaskCanceledException)
-            {
-                logger.LogInformation($"Queue processor {this.ListenerId} is terminated by cancellation request");
-            }
-            catch (Exception ex)
-            {
-                logger.LogInformation($"Message processor {this.ListenerId} threw exception and stopped: { ex.Message}");
-                throw;
+                catch (TaskCanceledException)
+                {
+                    logger.LogInformation("Queue processor {ProcessorId} is terminated by cancellation request", this.ListenerId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogInformation("Message processor {ProcessorId} threw an exception and stopped: {Error}", this.ListenerId, ex.Message);
+                    throw;
+                }
             }
         }
 
@@ -108,33 +111,37 @@ namespace SqsProcessorContainer
                 queueIndex < _queueArns.Length && !cancellationToken.IsCancellationRequested; 
                 queueIndex++) 
             {
-                bool isTopPriorityQueue = queueIndex == 0 && _queueArns.Length > 1;
+                using (logger.BeginScope("QueueIndex={QueueIndex}, QueueArn={QueueArn}", queueIndex, _queueArns[queueIndex]))
+                {
+                    bool isTopPriorityQueue = queueIndex == 0 && _queueArns.Length > 1;
 
-                if (isTopPriorityQueue)
-                {   // A top priority queue with lower priority queues present
-                    bool mayHaveMessages = true;
+                    if (isTopPriorityQueue)
+                    {   // A top priority queue with lower priority queues present
+                        bool mayHaveMessages = true;
 
-                    for (int pollingDelaySeconds = lowPriorityQueueMayHaveMessages ? 0 : _highPriorityWaitTimeoutSeconds; // Do long polling of high-prty queue only if we think low-prty are empty, short-poll otherwise.
-                        mayHaveMessages && !cancellationToken.IsCancellationRequested ; 
-                        pollingDelaySeconds = 0) // keep pulling messages from top priority queue for as long there are ones
-                    {
-                        mayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
+                        for (int pollingDelaySeconds = lowPriorityQueueMayHaveMessages ? 0 : _highPriorityWaitTimeoutSeconds; // Do long polling of high-prty queue only if we think low-prty are empty, short-poll otherwise.
+                            mayHaveMessages && !cancellationToken.IsCancellationRequested;
+                            pollingDelaySeconds = 0) // keep pulling messages from top priority queue for as long there are ones
+                        {
+                            mayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
+                        }
                     }
-                }else
-                {   // A single queue or a lower priority queue
+                    else
+                    {   // A single queue or a lower priority queue
 
-                    // If there's only one queue, use maximum long-polling delay.
-                    // If it's a low priority queue, we'll do short polling
-                    int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0;
+                        // If there's only one queue, use maximum long-polling delay.
+                        // If it's a low priority queue, we'll do short polling
+                        int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0;
 
-                    lowPriorityQueueMayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
+                        lowPriorityQueueMayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
 
-                    if (lowPriorityQueueMayHaveMessages)
-                    {
-                        // processed some messages
-                        queueIndex = -1; // Restart from the highest-priority queue without breaking the loop
+                        if (lowPriorityQueueMayHaveMessages)
+                        {
+                            // processed some messages
+                            queueIndex = -1; // Restart from the highest-priority queue without breaking the loop
+                        }
+                        // No messages were processed, continue to the lower priority queue
                     }
-                    // No messages were processed, continue to the lower priority queue
                 }
             }
         }
@@ -156,7 +163,7 @@ namespace SqsProcessorContainer
         {
             if (messages.Count == 0)
             {
-                logger.LogDebug($"{Id(queueIndex)}: polling cycle returned no messages.");
+                logger.LogDebug("Polling cycle returned no messages.");
                 return false;
             }
 
@@ -204,24 +211,27 @@ namespace SqsProcessorContainer
         /// <exception cref="Exception"></exception>
         private async Task ProcessMessage(Message message, int queueIndex, CancellationToken cancellationToken)
         {
-            logger.LogDebug($"{Id(queueIndex)} Received message with id {message.MessageId} and body: \"{message.Body}\"");
-            try
+            using(logger.BeginScope("SqsMessageId={SqsMessageId}, SqsMessageBody={SqsMessageBody}", message.MessageId, message.Body))
             {
-                TMsgModel payload = this.DeserializeMessage(message.Body); 
-                await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
-            }
-            catch (Exception ex)
-            {
-                // Failed to process the message.
-                // Default implementation of HandlePayloadProcessingException() will return failed
-                // message back to the queue (or to the DQL) by setting message visibility timeout to _failureVisibilityTimeout.
-                await HandlePayloadProcessingException(ex, message, queueIndex, _failureVisibilityTimeout);
-                return;
-            }
+                logger.LogDebug("Received message");
+                try
+                {
+                    TMsgModel payload = this.DeserializeMessage(message.Body); 
+                    await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
+                }
+                catch (Exception ex)
+                {
+                    // Failed to process the message.
+                    // Default implementation of HandlePayloadProcessingException() will return failed
+                    // message back to the queue (or to the DQL) by setting message visibility timeout to _failureVisibilityTimeout.
+                    await HandlePayloadProcessingException(ex, message, queueIndex, _failureVisibilityTimeout);
+                    return;
+                }
 
-            // Message processed successfully.
-            // Delete message from the queue after successful processing.
-            await DeleteMessageAsync(message, queueIndex);
+                // Message processed successfully.
+                // Delete message from the queue after successful processing.
+                await DeleteMessageAsync(message, queueIndex);
+            }
         }
 
         /// <summary>
@@ -236,11 +246,10 @@ namespace SqsProcessorContainer
         /// <returns></returns>
         protected virtual Task HandlePayloadProcessingException(Exception ex, Message message, int queueIndex, TimeSpan failureVisibilityTimeoutSeconds)
         {
-            logger.LogError($"{Id(queueIndex)} Failed to process message {message.MessageId} " +
-                            $"due to \"{ex.Message}\". " +
-                            $"Its visibility timeout is set to {failureVisibilityTimeoutSeconds.ToDuration()}");
+            logger.LogError(ex, "Failed to process message due to {Error}. Its visibility timeout is set to {VisibilityTimeout}",
+                            ex.Message, failureVisibilityTimeoutSeconds.ToDuration());
 
-            logger.LogDebug($"{Id(queueIndex)} message: \"{message.Body}\"\ncaused exception and will be returned to the queue for re-processing, or to DLQ:\n{ex}");
+            logger.LogDebug("Message caused exception and will be returned to the queue for re-processing, or to DLQ: {Error}", ex.Message);
 
             // Returns message to either to the original queue or to a DLQ. If former, the message will be
             // re-tried after delay of failureVisibilityTimeoutSeconds.
@@ -260,7 +269,7 @@ namespace SqsProcessorContainer
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, int queueIndex, TimeSpan visibilityTimeout)
         {
             await SqsMessageExtensions.SetVisibilityTimeout(_queueArns[queueIndex], receiptHandle, visibilityTimeout);
-            logger.LogDebug($"{Id(queueIndex)} successfully set message visibility timeout to {visibilityTimeout.ToDuration()}");
+            logger.LogDebug("Successfully set message visibility timeout to {VisibilityTimeout}", visibilityTimeout.ToDuration());
         }
 
         protected async Task DeleteMessageAsync(Message message, int queueIndex)
@@ -272,7 +281,7 @@ namespace SqsProcessorContainer
             };
             DeleteMessageResponse response = await _sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
-            logger.LogDebug($"{Id(queueIndex)} deleted message with Id: \"{message.MessageId}\"");
+            logger.LogDebug("Message deleted from the queue");
         }
 
         /// <summary>
@@ -296,7 +305,7 @@ namespace SqsProcessorContainer
             
             var response = await _sqsClient.SendMessageAsync(sendMessageRequest);
             
-            logger.LogDebug($"Returned message \"{sendMessageRequest.MessageBody}\" to {Id(queueIndex)} with delay of {delaySeconds} seconds.");
+            logger.LogDebug("Returned message to the queue with the delay of {DelaySeconds} seconds.", delaySeconds);
             
             return response;
         }

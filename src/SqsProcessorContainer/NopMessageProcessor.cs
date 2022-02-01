@@ -47,7 +47,7 @@ namespace SqsProcessorContainer
                     throw new Exception($"{Id(queueIndex)} message with Id {messageId} requested exception: \"{payload.Text}\"");
             }
 
-            logger.LogInformation($"{Id(queueIndex)} NOP-processed payload: \"{payload.Text}\"");
+            logger.LogInformation("Completed No-Op payload processing");
         }
 
         protected override Task HandlePayloadProcessingException(Exception ex, Message message, int queueIndex, TimeSpan failureVisibilityTimeout)
