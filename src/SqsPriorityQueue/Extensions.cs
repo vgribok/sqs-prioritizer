@@ -6,7 +6,8 @@ namespace SqsPriorityQueue
     {
         /// <summary>
         /// Register priority queue processors. Once registered, processor collection can be obtained
-        /// by DI-resolving IPriorityQueueProcessor<IPriorityQueueProcessor>
+        /// by DI-resolving either IPriorityQueueProcessor subclasses, or (if isTheOnlyProcessorType is
+        /// set to true) by resolving IPriorityQueueProcessor and IEnumerable<IPriorityQueueProcessor>.
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <param name="services"></param>

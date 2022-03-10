@@ -3,7 +3,7 @@
 using Amazon.SQS;
 using Microsoft.Extensions.Logging;
 
-namespace SqsProcessorContainer
+namespace SqsPriorityQueue
 {
     /// <summary>
     /// Convenience class when subclasses do their own message parsing

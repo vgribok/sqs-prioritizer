@@ -11,11 +11,12 @@ using aws_sdk_extensions;
 using Microsoft.Extensions.Logging;
 using SqsPriorityQueue;
 
-namespace SqsProcessorContainer
+namespace SqsPriorityQueue
 {
     /// <summary>
     /// Base class for container-friendly, thread-safe, long-polling and cancellable SQS message processor
     /// for multiple priority-based SQS queues.
+    /// See virtual and abstract method docs for details on how to create your own message processor.
     /// </summary>
     /// <typeparam name="TMsgModel">Queue message model</typeparam>
     public abstract class SqsProcessor<TMsgModel> : IPriorityQueueProcessor
@@ -28,7 +29,7 @@ namespace SqsProcessorContainer
         protected readonly int _highPriorityWaitTimeoutSeconds;
         protected readonly TimeSpan _failureVisibilityTimeout;
         protected readonly int _messageBatchSize;
-        private readonly IAmazonSQS _sqsClient;
+        protected readonly IAmazonSQS sqsClient;
         protected readonly ILogger logger;
 
         public string? ListenerId { get; set; }
@@ -44,7 +45,7 @@ namespace SqsProcessorContainer
             _highPriorityWaitTimeoutSeconds = settings.HighPriorityWaitTimeoutSeconds;
             _failureVisibilityTimeout = TimeSpan.FromSeconds(settings.VisibilityTimeoutOnProcessingFailureSeconds);
             _messageBatchSize = settings.MessageBatchSize;
-            _sqsClient = sqsClient;
+            this.sqsClient = sqsClient;
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
@@ -182,7 +183,7 @@ namespace SqsProcessorContainer
                 WaitTimeSeconds = longPollTimeSeconds
             };
 
-            var receiveMsgReponse = await _sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
+            var receiveMsgReponse = await sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
             return receiveMsgReponse.Messages;
         }
 
@@ -257,7 +258,7 @@ namespace SqsProcessorContainer
         }
 
         /// <summary>
-        /// Method to override in subclasses
+        /// Main method to override in subclasses
         /// </summary>
         /// <param name="payload">Message payload</param>
         /// <param name="receiptHandle">Can be used to extend or shrink current message visibility timeout</param>
@@ -279,7 +280,7 @@ namespace SqsProcessorContainer
                 QueueUrl = _queueUrls[queueIndex],
                 ReceiptHandle = message.ReceiptHandle
             };
-            DeleteMessageResponse response = await _sqsClient.DeleteMessageAsync(deleteMessageRequest);
+            DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
             
             logger.LogDebug("Message deleted from the queue");
         }
@@ -303,7 +304,7 @@ namespace SqsProcessorContainer
                 DelaySeconds = delaySeconds
             };
             
-            var response = await _sqsClient.SendMessageAsync(sendMessageRequest);
+            var response = await sqsClient.SendMessageAsync(sendMessageRequest);
             
             logger.LogDebug("Returned message to the queue with the delay of {DelaySeconds} seconds.", delaySeconds);
             

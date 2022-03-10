@@ -1,6 +1,6 @@
 ﻿using Amazon;
 
-namespace SqsProcessorContainer
+namespace SqsPriorityQueue
 {
     public class SqsPrioritySettings
     {

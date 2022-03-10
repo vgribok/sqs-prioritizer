@@ -4,11 +4,12 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Logging;
 using SqsDelay;
+using SqsPriorityQueue;
 
-namespace SqsProcessorContainer
+namespace MessagePrioritizer
 {
     /// <summary>
-    /// Almost "do nothing" SQS message processor example
+    /// Almost "do nothing" SQS message processor example.
     /// </summary>
     internal class NopMessageProcessor : SqsProcessor<MessageModel>
     {

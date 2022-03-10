@@ -1,4 +1,4 @@
-﻿namespace SqsProcessorContainer
+﻿namespace SqsPriorityQueue
 {
     internal class MessageModel
     {

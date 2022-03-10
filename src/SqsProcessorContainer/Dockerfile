@@ -18,18 +18,18 @@ WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
-COPY ["SqsProcessorContainer/SqsProcessorContainer.csproj", "SqsProcessorContainer/"]
+COPY ["SqsProcessorContainer/MessagePrioritizer.csproj", "SqsProcessorContainer/"]
 COPY ["SqsPriorityQueue/SqsPriorityQueue.csproj", "SqsPriorityQueue/"]
 COPY ["aws-sdk-extensions/aws-sdk-extensions.csproj", "aws-sdk-extensions/"]
-RUN dotnet restore SqsProcessorContainer/SqsProcessorContainer.csproj
+RUN dotnet restore SqsProcessorContainer/MessagePrioritizer.csproj
 COPY . .
 WORKDIR /src/SqsProcessorContainer
-RUN dotnet build SqsProcessorContainer.csproj -c Release -o /app/build
+RUN dotnet build MessagePrioritizer.csproj -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish SqsProcessorContainer.csproj -c Release -o /app/publish
+RUN dotnet publish MessagePrioritizer.csproj -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "SqsProcessorContainer.dll"]
+ENTRYPOINT ["dotnet", "MessagePrioritizer.dll"]
