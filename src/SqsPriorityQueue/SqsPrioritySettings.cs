@@ -33,10 +33,15 @@ namespace SqsPriorityQueue
         public int HighPriorityWaitTimeoutSeconds { get; set; } = 3;
 
         /// <summary>
-        /// On message processing failure, the message will be reappear 
+        /// On message processing failure, the message will reappear 
         /// in the queue after this interval.
         /// </summary>
         public int VisibilityTimeoutOnProcessingFailureSeconds { get; set; } = 1;
+
+        /// <summary>
+        /// Comma-delimited list of message attributes that the processor should expect.
+        /// </summary>
+        public string ExpectedMessageAttributes { get; set; } = string.Empty;
 
         #region Computed Properties
 
@@ -46,6 +51,12 @@ namespace SqsPriorityQueue
                                                          select arn;
 
         public IEnumerable<Arn> QueueArnsParsed => QueueArnCollection.Select(Arn.Parse);
+
+        public IEnumerable<string> ExpectedMessageAttributeNames =>
+            from attribure in this.ExpectedMessageAttributes.Split(',')
+            let attName = attribure.Trim()
+            where !string.IsNullOrWhiteSpace(attName)
+            select attName;
 
         #endregion Computed Properties
     }

@@ -16,7 +16,10 @@ namespace SqsPriorityQueue
         /// via resolving <see cref="IPriorityQueueProcessor"/> and <see cref="IEnumerable{IPriorityQueueProcessor}"/>.
         /// If registering multiple processor types, set this value to false for all processor types.
         /// </param>
-        public static void RegisterProcessors<T>(this IServiceCollection services, bool isTheOnlyProcessorType, Func<IServiceProvider, Type, int> processorCountFactory)
+        public static void RegisterProcessors<T>(this IServiceCollection services,
+            Func<IServiceProvider, Type, int> processorCountFactory,
+            bool isTheOnlyProcessorType = false
+            )
             where T: class, IPriorityQueueProcessor
         {
             services.AddTransient<T>();

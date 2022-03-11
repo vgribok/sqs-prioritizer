@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using SqsPriorityQueue;
 using MessagePrioritizer;
 using MessagePrioritizer.Models;
+using MessagePrioritizer.Processors;
 
 internal class Program : BackgroundService
 {
@@ -33,8 +34,10 @@ internal class Program : BackgroundService
         services.AddDefaultAWSOptions(awsSettings);
         services.AddAWSService<IAmazonSQS>();
 
-        //services.RegisterProcessors<NopMessageProcessor>(isTheOnlyProcessorType: true, RetrieveProcessorCountSetting);
-        services.RegisterProcessors<PushToOutputQueueProcessor>(isTheOnlyProcessorType: true, RetrieveProcessorCountSetting);
+        //services.RegisterProcessors<NopMessageProcessor>(RetrieveProcessorCountSetting, isTheOnlyProcessorType: true);
+        services.RegisterProcessors<PushToOutputQueueProcessor>(RetrieveProcessorCountSetting);
+        // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
+        //services.RegisterProcessors<OutputQueueFailTestMessageProcessor>((ioc, ptype) => 1);
     }
 
     private static int RetrieveProcessorCountSetting(IServiceProvider ioc, Type processorType)
@@ -46,9 +49,17 @@ internal class Program : BackgroundService
     /// IoC-friendly constructor with parameters injected by DI container
     /// </summary>
     /// <param name="processors">Collection of processor instances</param>
-    public Program(IEnumerable<IPriorityQueueProcessor> processors)
+    public Program(
+        IEnumerable<PushToOutputQueueProcessor> pumpProcessors
+        // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
+        //IEnumerable<OutputQueueFailTestMessageProcessor> outputFailProcessors
+        )
     {
-        this.processors = processors.ToList();
+        this.processors =
+            pumpProcessors.Cast<IPriorityQueueProcessor>()
+            // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
+            //.Concat(outputFailProcessors.Cast<IPriorityQueueProcessor>())
+            .ToList();
     }
 
     /// <summary>

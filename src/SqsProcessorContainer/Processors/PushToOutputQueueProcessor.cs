@@ -1,5 +1,6 @@
 ﻿using Amazon.SQS;
 using Amazon.SQS.Model;
+using aws_sdk_extensions;
 using MessagePrioritizer.Models;
 using Microsoft.Extensions.Logging;
 using SqsPriorityQueue;
@@ -8,7 +9,7 @@ namespace MessagePrioritizer
 {
     internal class PushToOutputQueueProcessor : TextMessageProcessor
     {
-        const string sourceQueueUrlMessageAttributeName = "SourceQueue";
+        public const string sourceQueueUrlMessageAttributeName = "SourceQueue";
 
         private readonly OutputQueueSettings outputQueueSettings;
 
@@ -22,8 +23,13 @@ namespace MessagePrioritizer
             this.outputQueueSettings = outputQueueSettings;
         }
 
-        protected override async Task ProcessPayload(string payload, CancellationToken cancellationToken, 
-            string receiptHandle, int queueIndex, string messageId)
+        protected override async Task ProcessPayload(string payload,
+            CancellationToken cancellationToken,
+            string receiptHandle,
+            int queueIndex,
+            string messageId,
+            Dictionary<string, MessageAttributeValue> messageAttributes
+            )
         {
             var sourceQueueValue = new MessageAttributeValue
             {
@@ -31,10 +37,8 @@ namespace MessagePrioritizer
                 DataType = "String"
             };
 
-            var msgAttributes = new Dictionary<string, MessageAttributeValue>
-            {
-                [sourceQueueUrlMessageAttributeName] = sourceQueueValue
-            };
+            var msgAttributes = messageAttributes.CloneMessageAttributes();
+            msgAttributes[sourceQueueUrlMessageAttributeName] = sourceQueueValue;
 
             var sendMessageRequest = new SendMessageRequest
             {
@@ -48,5 +52,7 @@ namespace MessagePrioritizer
             this.logger.LogTrace("Moved me message to the output queue, with new message id {OutputMessageId}.",
                                     response.MessageId);
         }
+
+
     }
 }

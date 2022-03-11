@@ -28,7 +28,13 @@ namespace MessagePrioritizer
         /// <param name="messageId"></param>
         /// <returns></returns>
         /// <exception cref="Exception"></exception>
-        protected override async Task ProcessPayload(MessageModel payload, CancellationToken cancellationToken, string receiptHandle, int queueIndex, string messageId)
+        protected override async Task ProcessPayload(
+            MessageModel payload,
+            CancellationToken cancellationToken,
+            string receiptHandle,
+            int queueIndex,
+            string messageId,
+            Dictionary<string, MessageAttributeValue> messageAttributes)
         {
             if (payload.Return ?? false)
             {

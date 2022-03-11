@@ -31,6 +31,7 @@ namespace SqsPriorityQueue
         protected readonly int _messageBatchSize;
         protected readonly IAmazonSQS sqsClient;
         protected readonly ILogger logger;
+        protected readonly List<string> expectedAttributeNames;
 
         public string? ListenerId { get; set; }
 
@@ -49,6 +50,7 @@ namespace SqsPriorityQueue
 
             _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
             _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
+            this.expectedAttributeNames = settings.ExpectedMessageAttributeNames.ToList();
         }
         protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {this.ListenerId}";
 
@@ -173,6 +175,12 @@ namespace SqsPriorityQueue
             return true;
         }
 
+        /// <summary>
+        /// Supplies message attribute names expected by the processor
+        /// </summary>
+        /// <returns></returns>
+        protected virtual IEnumerable<string> ExpectMessageAttributes() => expectedAttributeNames;
+
         private async Task<List<Message>> FetchMessagesFromSingleQueueWithLongPoll(
                     CancellationToken cancellationToken, int queueIndex, int longPollTimeSeconds)
         {
@@ -180,7 +188,8 @@ namespace SqsPriorityQueue
             {
                 QueueUrl = _queueUrls[queueIndex],
                 MaxNumberOfMessages = _messageBatchSize, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
-                WaitTimeSeconds = longPollTimeSeconds
+                WaitTimeSeconds = longPollTimeSeconds,
+                MessageAttributeNames = this.ExpectMessageAttributes().ToList()
             };
 
             var receiveMsgReponse = await sqsClient.ReceiveMessageAsync(receiveMessageRequest, cancellationToken);
@@ -218,7 +227,14 @@ namespace SqsPriorityQueue
                 try
                 {
                     TMsgModel payload = this.DeserializeMessage(message.Body); 
-                    await ProcessPayload(payload, cancellationToken, message.ReceiptHandle, queueIndex, message.MessageId);
+                    await ProcessPayload(
+                        payload, 
+                        cancellationToken, 
+                        message.ReceiptHandle, 
+                        queueIndex, 
+                        message.MessageId, 
+                        message.MessageAttributes
+                    );
                 }
                 catch (Exception ex)
                 {
@@ -265,11 +281,18 @@ namespace SqsPriorityQueue
         /// <param name="queueIndex"></param>
         /// <param name="messageId"></param>
         /// <returns></returns>
-        protected abstract Task ProcessPayload(TMsgModel payload, CancellationToken cancellationToken, string receiptHandle, int queueIndex, string messageId);
+        protected abstract Task ProcessPayload(
+            TMsgModel payload, 
+            CancellationToken cancellationToken, 
+            string receiptHandle, 
+            int queueIndex, 
+            string messageId, 
+            Dictionary<string, MessageAttributeValue> meessageAttributes
+        );
 
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, int queueIndex, TimeSpan visibilityTimeout)
         {
-            await SqsMessageExtensions.SetVisibilityTimeout(_queueArns[queueIndex], receiptHandle, visibilityTimeout);
+            await this.sqsClient.SetVisibilityTimeout(_queueArns[queueIndex], receiptHandle, visibilityTimeout);
             logger.LogDebug("Successfully set message visibility timeout to {VisibilityTimeout}", visibilityTimeout.ToDuration());
         }
 
