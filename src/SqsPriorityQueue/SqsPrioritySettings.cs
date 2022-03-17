@@ -59,5 +59,11 @@ namespace SqsPriorityQueue
             select attName;
 
         #endregion Computed Properties
+
+        internal void Validate()
+        {
+            if(string.IsNullOrWhiteSpace(this.QueueArns))
+                throw new ArgumentException(nameof(this.QueueArns), "Cannot be blank");
+        }
     }
 }

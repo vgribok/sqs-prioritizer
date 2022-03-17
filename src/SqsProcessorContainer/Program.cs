@@ -38,6 +38,13 @@ internal class Program : BackgroundService
         services.RegisterProcessors<PushToOutputQueueProcessor>(RetrieveProcessorCountSetting);
         // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
         //services.RegisterProcessors<OutputQueueFailTestMessageProcessor>((ioc, ptype) => 1);
+
+        OutputQueueSettings outputQueueSettings = context.Configuration
+                                            .GetSection(nameof(OutputQueueSettings))
+                                            .Get<OutputQueueSettings>();
+
+        if (!string.IsNullOrWhiteSpace(outputQueueSettings.RedriveDlqArnString))
+            services.RegisterProcessors<OutputDlqRedriveProcessor>((ioc, ptype) => 1);
     }
 
     private static int RetrieveProcessorCountSetting(IServiceProvider ioc, Type processorType)
@@ -50,17 +57,18 @@ internal class Program : BackgroundService
     /// </summary>
     /// <param name="processors">Collection of processor instances</param>
     public Program(
-        IEnumerable<PushToOutputQueueProcessor> pumpProcessors
-        // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
-        //IEnumerable<OutputQueueFailTestMessageProcessor> outputFailProcessors
+        IEnumerable<PushToOutputQueueProcessor> pumpProcessors,
+        IEnumerable<OutputDlqRedriveProcessor> dlqRedrivers,
+        IEnumerable<OutputQueueFailTestMessageProcessor> outputFailProcessors
         )
     {
-        this.processors =
-            pumpProcessors.Cast<IPriorityQueueProcessor>()
-            // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
-            //.Concat(outputFailProcessors.Cast<IPriorityQueueProcessor>())
-            .ToList();
+        this.processors = MergeProcessors(pumpProcessors, dlqRedrivers, outputFailProcessors)
+                            .ToList();
     }
+
+    private static IEnumerable<IPriorityQueueProcessor> MergeProcessors(params IEnumerable<object>?[] processors)
+        => processors.Where(processorSet => processorSet != null)
+                    .SelectMany(processorSet2 => processorSet2!.Cast<IPriorityQueueProcessor>());
 
     /// <summary>
     /// Main service/daemon execution loop

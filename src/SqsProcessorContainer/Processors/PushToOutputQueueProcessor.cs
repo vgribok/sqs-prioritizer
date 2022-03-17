@@ -7,6 +7,10 @@ using SqsPriorityQueue;
 
 namespace MessagePrioritizer
 {
+    /// <summary>
+    /// Main prioritizer message pump moving
+    /// messages from input queues to the output queue.
+    /// </summary>
     internal class PushToOutputQueueProcessor : TextMessageProcessor
     {
         public const string sourceQueueUrlMessageAttributeName = "SourceQueue";
@@ -52,7 +56,5 @@ namespace MessagePrioritizer
             this.logger.LogTrace("Moved me message to the output queue, with new message id {OutputMessageId}.",
                                     response.MessageId);
         }
-
-
     }
 }

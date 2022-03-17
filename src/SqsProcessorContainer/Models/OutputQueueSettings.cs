@@ -37,9 +37,21 @@ namespace MessagePrioritizer.Models
         public int ThrottleQueueDepth { get; set; }
 
         /// <summary>
+        /// ARN of the DLQ from which messages would be re-driven into the
+        /// original input (priority) queues
+        /// </summary>
+        public string? RedriveDlqArnString { get; set; }
+
+        /// <summary>
         /// Specifies how often message pump processor checks output queue
         /// </summary>
         public int QueueDepthCheckFrequencySeconds { get; set; }
+
+        /// <summary>
+        /// Static (not exp-back-off) visibility delay for each message
+        /// re-driven from output DLQ
+        /// </summary>
+        public int DlqRedriveDelaySeconds { get; set; } = 0;
 
         public Arn OutputQueueArn => Arn.Parse(this.OutputQueueArnString);
 

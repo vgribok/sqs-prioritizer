@@ -37,6 +37,8 @@ namespace SqsPriorityQueue
 
         public SqsProcessor(SqsPrioritySettings settings, ILogger logger, IAmazonSQS sqsClient)
         {
+            settings.Validate();
+
             this.logger = logger;
             
             _queueArns = settings.QueueArnsParsed.ToArray();

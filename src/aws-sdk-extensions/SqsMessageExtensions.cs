@@ -37,12 +37,14 @@ namespace aws_sdk_extensions
             qmsg.SetVisibilityTimeout(TimeSpan.Zero);
 
         public static Dictionary<string, MessageAttributeValue> CloneMessageAttributes(
-                this Dictionary<string, MessageAttributeValue> messageAttributes)
+                this Dictionary<string, MessageAttributeValue> messageAttributes,
+                params string[] exclusions)
         {
             var output = new Dictionary<string, MessageAttributeValue>();
 
             foreach(var kvp in messageAttributes)
-                output[kvp.Key] = kvp.Value.CloneMessageAttributeValue();
+                if(!exclusions.Contains(kvp.Key))
+                    output[kvp.Key] = kvp.Value.CloneMessageAttributeValue();
 
             return output;
         }
