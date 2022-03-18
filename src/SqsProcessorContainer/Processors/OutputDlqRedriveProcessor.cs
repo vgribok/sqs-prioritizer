@@ -12,7 +12,7 @@ namespace MessagePrioritizer.Processors
     /// Re-drives messages from output queue's DLQ into
     /// original input queues.
     /// </summary>
-    internal class OutputDlqRedriveProcessor : TextMessageProcessor
+    internal class OutputDlqRedriveProcessor : MessagePumpProcessor
     {
         private readonly OutputQueueSettings outputQueueSettings;
 
@@ -41,31 +41,14 @@ namespace MessagePrioritizer.Processors
             this.outputQueueSettings = outputQueueSettings;
         }
 
-        protected override async Task ProcessPayload(
-            string payload, 
-            CancellationToken cancellationToken, 
-            string receiptHandle, 
-            int queueIndex, 
-            string messageId, 
-            Dictionary<string, MessageAttributeValue> messageAttributes)
+        protected override SendMessageRequest CreateSendMessageRequest(string payload,
+            Dictionary<string, MessageAttributeValue>? sourceMessageAttributes,
+            Dictionary<string, MessageAttributeValue>? outputMessageAttributes
+            )
         {
-            string originalQueueUrl = messageAttributes[PushToOutputQueueProcessor.sourceQueueUrlMessageAttributeName].StringValue;
-            var msgAttributes = messageAttributes.CloneMessageAttributes(PushToOutputQueueProcessor.sourceQueueUrlMessageAttributeName);
-
-            var sendMessageRequest = new SendMessageRequest
-            {
-                QueueUrl = originalQueueUrl,
-                MessageBody = payload,
-                MessageAttributes = msgAttributes,
-                DelaySeconds = outputQueueSettings.DlqRedriveDelaySeconds
-            };
-
-            var response = await sqsClient.SendMessageAsync(sendMessageRequest, cancellationToken);
-
-            this.logger.LogTrace("Re-drove DQL message to the original queue {OriginalQueue}, with new message id {OutputMessageId}.",
-                                    originalQueueUrl,
-                                    response.MessageId
-            );
+            SendMessageRequest sendMsgRequest = base.CreateSendMessageRequest(payload, sourceMessageAttributes, outputMessageAttributes);
+            sendMsgRequest.DelaySeconds = outputQueueSettings.DlqRedriveDelaySeconds;
+            return sendMsgRequest;
         }
 
         protected override IEnumerable<string> ExpectMessageAttributes()
@@ -75,5 +58,14 @@ namespace MessagePrioritizer.Processors
 
             yield return PushToOutputQueueProcessor.sourceQueueUrlMessageAttributeName;
         }
+
+        protected override string GetOutputQueueUrl(Dictionary<string, MessageAttributeValue>? messageAttributes)
+            => messageAttributes![PushToOutputQueueProcessor.sourceQueueUrlMessageAttributeName].StringValue;
+
+        protected override Dictionary<string, MessageAttributeValue>? AssembleOutboudMessageAttributes(
+            Dictionary<string, MessageAttributeValue> messageAttributes, 
+            int queueIndex
+            )
+            => messageAttributes.CloneMessageAttributes(PushToOutputQueueProcessor.sourceQueueUrlMessageAttributeName);
     }
 }

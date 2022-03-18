@@ -53,6 +53,19 @@ namespace MessagePrioritizer.Models
         /// </summary>
         public int DlqRedriveDelaySeconds { get; set; } = 0;
 
+        /// <summary>
+        /// If not null, a test processor of the output queue will be
+        /// attached to the output queue. It will fail every X message
+        /// specified by this property.
+        /// </summary>
+        /// <remarks>
+        /// Set to null to disable test processor of the output queue.
+        /// Set to 0 to successfully process (log) all messages.
+        /// Set to 1 to fail all messages.
+        /// Set to 4 to fail 1/4 (25%) of all messages.
+        /// </remarks>
+        public int? TestProcessOutputQueueFailEveryXMessage { get; set; } = null;
+
         public Arn OutputQueueArn => Arn.Parse(this.OutputQueueArnString);
 
         public string OutputQueueUrl => this.OutputQueueArn.SqsArnToUrl();

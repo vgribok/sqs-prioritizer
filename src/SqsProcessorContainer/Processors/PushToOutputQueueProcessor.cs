@@ -1,6 +1,5 @@
 ﻿using Amazon.SQS;
 using Amazon.SQS.Model;
-using aws_sdk_extensions;
 using MessagePrioritizer.Models;
 using Microsoft.Extensions.Logging;
 using SqsPriorityQueue;
@@ -11,7 +10,7 @@ namespace MessagePrioritizer
     /// Main prioritizer message pump moving
     /// messages from input queues to the output queue.
     /// </summary>
-    internal class PushToOutputQueueProcessor : TextMessageProcessor
+    internal class PushToOutputQueueProcessor : MessagePumpProcessor
     {
         public const string sourceQueueUrlMessageAttributeName = "SourceQueue";
 
@@ -27,34 +26,33 @@ namespace MessagePrioritizer
             this.outputQueueSettings = outputQueueSettings;
         }
 
-        protected override async Task ProcessPayload(string payload,
-            CancellationToken cancellationToken,
-            string receiptHandle,
-            int queueIndex,
-            string messageId,
-            Dictionary<string, MessageAttributeValue> messageAttributes
-            )
+        protected override string GetOutputQueueUrl(Dictionary<string, MessageAttributeValue>? messageAttributes)
+            => this.outputQueueSettings.OutputQueueUrl;
+
+        protected override Dictionary<string, MessageAttributeValue>? AssembleOutboudMessageAttributes(
+            Dictionary<string, MessageAttributeValue> sourceMessageAttributes, 
+            int queueIndex)
+        {
+            var msgAttributes = base.AssembleOutboudMessageAttributes(sourceMessageAttributes, queueIndex);
+            this.AddSourceQueueMessageAttribute(queueIndex, msgAttributes!);
+            return msgAttributes;
+        }
+
+        /// <summary>
+        /// Adds information about the source queue as a message attribute.
+        /// This information is later used by the DLQ re-driver to re-drive
+        /// failed messages back to the original SQS queue.
+        /// </summary>
+        /// <param name="queueIndex"></param>
+        /// <param name="msgAttributes"></param>
+        private void AddSourceQueueMessageAttribute(int queueIndex, Dictionary<string, MessageAttributeValue> msgAttributes)
         {
             var sourceQueueValue = new MessageAttributeValue
             {
                 StringValue = this._queueUrls[queueIndex],
                 DataType = "String"
             };
-
-            var msgAttributes = messageAttributes.CloneMessageAttributes();
-            msgAttributes[sourceQueueUrlMessageAttributeName] = sourceQueueValue;
-
-            var sendMessageRequest = new SendMessageRequest
-            {
-                QueueUrl = outputQueueSettings.OutputQueueUrl,
-                MessageBody = payload,
-                MessageAttributes = msgAttributes
-            };
-
-            var response = await sqsClient.SendMessageAsync(sendMessageRequest, cancellationToken);
-
-            this.logger.LogTrace("Moved me message to the output queue, with new message id {OutputMessageId}.",
-                                    response.MessageId);
+            msgAttributes![sourceQueueUrlMessageAttributeName] = sourceQueueValue;
         }
     }
 }

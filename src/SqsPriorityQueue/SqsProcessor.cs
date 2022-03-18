@@ -168,7 +168,8 @@ namespace SqsPriorityQueue
         {
             if (messages.Count == 0)
             {
-                logger.LogDebug("Polling cycle returned no messages.");
+                // The following log entry makes the app too chatty.
+                logger.LogTrace("Polling cycle returned no messages.");
                 return false;
             }
 
@@ -178,7 +179,9 @@ namespace SqsPriorityQueue
         }
 
         /// <summary>
-        /// Supplies message attribute names expected by the processor
+        /// Supplies message attribute names expected by the processor.
+        /// This declaration enables visibility of selected message 
+        /// attributes to the message processor.
         /// </summary>
         /// <returns></returns>
         protected virtual IEnumerable<string> ExpectMessageAttributes() => expectedAttributeNames;
@@ -289,7 +292,7 @@ namespace SqsPriorityQueue
             string receiptHandle, 
             int queueIndex, 
             string messageId, 
-            Dictionary<string, MessageAttributeValue> meessageAttributes
+            Dictionary<string, MessageAttributeValue> messageAttributes
         );
 
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, int queueIndex, TimeSpan visibilityTimeout)

@@ -9,7 +9,7 @@ namespace MessagePrioritizer.Processors
     /// Test (non-prod) processor failing processing of messages from
     /// output queue (moving them to DLQ).
     /// </summary>
-    public class OutputQueueFailTestMessageProcessor : FailTestMessageProcessor
+    public class OutputQueueTestMessageProcessor : TestMessageProcessor
     {
         protected static SqsPrioritySettings CreateOutputQueueSettings(string outputDlqArn, string expectedMsgAttributes) =>
             new SqsPrioritySettings
@@ -22,13 +22,14 @@ namespace MessagePrioritizer.Processors
                 ExpectedMessageAttributes = expectedMsgAttributes
             };
 
-        public OutputQueueFailTestMessageProcessor(
+        public OutputQueueTestMessageProcessor(
             SqsPrioritySettings settings,
             OutputQueueSettings outputQueueSettings,
             ILogger<TextMessageProcessor> logger, 
             IAmazonSQS sqsClient)
             : base(
                     CreateOutputQueueSettings(outputQueueSettings.OutputQueueArnString, settings.ExpectedMessageAttributes),
+                    outputQueueSettings,
                     logger,
                     sqsClient
               )

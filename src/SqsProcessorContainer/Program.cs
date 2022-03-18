@@ -34,14 +34,15 @@ internal class Program : BackgroundService
         services.AddDefaultAWSOptions(awsSettings);
         services.AddAWSService<IAmazonSQS>();
 
-        //services.RegisterProcessors<NopMessageProcessor>(RetrieveProcessorCountSetting, isTheOnlyProcessorType: true);
+        //services.RegisterProcessors<NopMessageProcessor>(RetrieveProcessorCountSetting, isTheOnlyProcessorType: false);
         services.RegisterProcessors<PushToOutputQueueProcessor>(RetrieveProcessorCountSetting);
-        // Uncomment the following line to test fail-processing messages in the output queue. (This is for testing purposes only)
-        //services.RegisterProcessors<OutputQueueFailTestMessageProcessor>((ioc, ptype) => 1);
 
         OutputQueueSettings outputQueueSettings = context.Configuration
                                             .GetSection(nameof(OutputQueueSettings))
                                             .Get<OutputQueueSettings>();
+
+        if(outputQueueSettings.TestProcessOutputQueueFailEveryXMessage != null)
+            services.RegisterProcessors<OutputQueueTestMessageProcessor>((ioc, ptype) => 1);
 
         if (!string.IsNullOrWhiteSpace(outputQueueSettings.RedriveDlqArnString))
             services.RegisterProcessors<OutputDlqRedriveProcessor>((ioc, ptype) => 1);
@@ -59,10 +60,11 @@ internal class Program : BackgroundService
     public Program(
         IEnumerable<PushToOutputQueueProcessor> pumpProcessors,
         IEnumerable<OutputDlqRedriveProcessor> dlqRedrivers,
-        IEnumerable<OutputQueueFailTestMessageProcessor> outputFailProcessors
+        IEnumerable<OutputQueueTestMessageProcessor> outputFailProcessors,
+        IEnumerable<NopMessageProcessor> nopMessageProcessors
         )
     {
-        this.processors = MergeProcessors(pumpProcessors, dlqRedrivers, outputFailProcessors)
+        this.processors = MergeProcessors(pumpProcessors, dlqRedrivers, outputFailProcessors, nopMessageProcessors)
                             .ToList();
     }
 
