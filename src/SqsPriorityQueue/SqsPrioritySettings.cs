@@ -43,6 +43,13 @@ namespace SqsPriorityQueue
         /// </summary>
         public string ExpectedMessageAttributes { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Sleep time to wait when processor is paused
+        /// before checking paused flag again.
+        /// Ensure there is no tight loop burning CPU.
+        /// </summary>
+        public int IsPausedCheckFrequencyMillisec { get; set; } = 250;
+
         #region Computed Properties
 
         public IEnumerable<string> QueueArnCollection => from arnString in QueueArns.Split(',')

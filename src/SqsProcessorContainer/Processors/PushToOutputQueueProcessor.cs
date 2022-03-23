@@ -16,14 +16,25 @@ namespace MessagePrioritizer
 
         private readonly OutputQueueSettings outputQueueSettings;
 
+        private bool isPaused;
+
+        protected override bool IsPaused => this.isPaused;
+
+
         public PushToOutputQueueProcessor(
             SqsPrioritySettings settings,
             OutputQueueSettings outputQueueSettings,
+            OutputQueueDepthMonitor outputQueueDepthMonitor,
             ILogger<TextMessageProcessor> logger, 
             IAmazonSQS sqsClient) 
             : base(settings, logger, sqsClient)
         {
+            // Ensure queue depth monitor check ran an least once before message pump loop launches
+            outputQueueDepthMonitor.CheckOutputQueueDepthAndNotifyPrioritizerMessagePump().Wait();
+
             this.outputQueueSettings = outputQueueSettings;
+            outputQueueDepthMonitor.OnOutputQueuePaused += this.TogglePausedFlag;
+            this.isPaused = outputQueueDepthMonitor.IsOutputQueuePaused;
         }
 
         protected override string GetOutputQueueUrl(Dictionary<string, MessageAttributeValue>? messageAttributes)
@@ -49,10 +60,20 @@ namespace MessagePrioritizer
         {
             var sourceQueueValue = new MessageAttributeValue
             {
-                StringValue = this._queueUrls[queueIndex],
+                StringValue = this.queueUrls[queueIndex],
                 DataType = "String"
             };
             msgAttributes![sourceQueueUrlMessageAttributeName] = sourceQueueValue;
+        }
+
+        private void TogglePausedFlag(bool needToPause)
+        {
+            if (this.isPaused == needToPause)
+                return;
+
+            this.isPaused = needToPause;
+            this.logger.LogInformation("{FetchPauseAction} prioritizer message pump processor.", 
+                            needToPause ? "Paused" : "Resumed");
         }
     }
 }

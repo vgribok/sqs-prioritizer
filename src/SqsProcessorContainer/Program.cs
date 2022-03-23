@@ -34,8 +34,9 @@ internal class Program : BackgroundService
         services.AddDefaultAWSOptions(awsSettings);
         services.AddAWSService<IAmazonSQS>();
 
+        services.AddSingleton<OutputQueueDepthMonitor>();
+
         //services.RegisterProcessors<NopMessageProcessor>(RetrieveProcessorCountSetting, isTheOnlyProcessorType: false);
-        services.RegisterProcessors<PushToOutputQueueProcessor>(RetrieveProcessorCountSetting);
 
         OutputQueueSettings outputQueueSettings = context.Configuration
                                             .GetSection(nameof(OutputQueueSettings))
@@ -46,11 +47,14 @@ internal class Program : BackgroundService
 
         if (!string.IsNullOrWhiteSpace(outputQueueSettings.RedriveDlqArnString))
             services.RegisterProcessors<OutputDlqRedriveProcessor>((ioc, ptype) => 1);
+
+        services.RegisterProcessors<PushToOutputQueueProcessor>(RetrieveProcessorCountSetting);
     }
 
     private static int RetrieveProcessorCountSetting(IServiceProvider ioc, Type processorType)
         => ioc.GetRequiredService<SqsPrioritySettings>().ProcessorCount;
 
+    private readonly OutputQueueDepthMonitor outputQueueDepthMonitor;
     private readonly List<IPriorityQueueProcessor> processors;
 
     /// <summary>
@@ -61,9 +65,12 @@ internal class Program : BackgroundService
         IEnumerable<PushToOutputQueueProcessor> pumpProcessors,
         IEnumerable<OutputDlqRedriveProcessor> dlqRedrivers,
         IEnumerable<OutputQueueTestMessageProcessor> outputFailProcessors,
-        IEnumerable<NopMessageProcessor> nopMessageProcessors
+        IEnumerable<NopMessageProcessor> nopMessageProcessors,
+        OutputQueueDepthMonitor outputQueueDepthMonitor
         )
     {
+        this.outputQueueDepthMonitor = outputQueueDepthMonitor;
+
         this.processors = MergeProcessors(pumpProcessors, dlqRedrivers, outputFailProcessors, nopMessageProcessors)
                             .ToList();
     }
@@ -79,8 +86,13 @@ internal class Program : BackgroundService
     /// <returns></returns>
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Run processor listening loops
-        IEnumerable<Task> processorTasks = processors.Select(p => p.Listen(stoppingToken));
-        return Task.WhenAll(processorTasks);
+        Task outputQueueDepthMonitor = this.outputQueueDepthMonitor.RunMonitoringLoop(stoppingToken);
+
+        // Run processor listening loops. Using materialized List for the ease of debugging.
+        List<Task> parallelTasks = processors.Select(p => p.Listen(stoppingToken))
+                                    .Append(outputQueueDepthMonitor)
+                                    .ToList();
+
+        return Task.WhenAll(parallelTasks);
     }
 }

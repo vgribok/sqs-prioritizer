@@ -23,17 +23,20 @@ namespace SqsPriorityQueue
     {
         public const int maxLongPollingTimeSeconds = 20;
 
-        protected readonly Arn[] _queueArns;
-        protected readonly string[] _queueUrls;
-        protected readonly RegionEndpoint[] _queueRegions;
-        protected readonly int _highPriorityWaitTimeoutSeconds;
-        protected readonly TimeSpan _failureVisibilityTimeout;
-        protected readonly int _messageBatchSize;
+        protected readonly Arn[] queueArns;
+        protected readonly string[] queueUrls;
+        protected readonly RegionEndpoint[] queueRegions;
+        protected readonly int highPriorityWaitTimeoutSeconds;
+        private readonly int isPausedCheckFrequencyMillisec;
+        protected readonly TimeSpan failureVisibilityTimeout;
+        protected readonly int messageBatchSize;
         protected readonly IAmazonSQS sqsClient;
         protected readonly ILogger logger;
         protected readonly List<string> expectedAttributeNames;
 
         public string? ListenerId { get; set; }
+
+        protected virtual bool IsPaused => false;
 
         public SqsProcessor(SqsPrioritySettings settings, ILogger logger, IAmazonSQS sqsClient)
         {
@@ -41,17 +44,20 @@ namespace SqsPriorityQueue
 
             this.logger = logger;
             
-            _queueArns = settings.QueueArnsParsed.ToArray();
-            if (_queueArns.Length == 0)
+            this.queueArns = settings.QueueArnsParsed.ToArray();
+            if (this.queueArns.Length == 0)
                 throw new ArgumentNullException(nameof(settings.QueueArnCollection), "Queue ARN collection cannot be empty.");
+            if (settings.IsPausedCheckFrequencyMillisec <= 0)
+                throw new ArgumentException(nameof(settings.IsPausedCheckFrequencyMillisec), "IsPaused flag check frequency must be positive.");
 
-            _highPriorityWaitTimeoutSeconds = settings.HighPriorityWaitTimeoutSeconds;
-            _failureVisibilityTimeout = TimeSpan.FromSeconds(settings.VisibilityTimeoutOnProcessingFailureSeconds);
-            _messageBatchSize = settings.MessageBatchSize;
+            highPriorityWaitTimeoutSeconds = settings.HighPriorityWaitTimeoutSeconds;
+            this.isPausedCheckFrequencyMillisec = settings.IsPausedCheckFrequencyMillisec;
+            failureVisibilityTimeout = TimeSpan.FromSeconds(settings.VisibilityTimeoutOnProcessingFailureSeconds);
+            messageBatchSize = settings.MessageBatchSize;
             this.sqsClient = sqsClient;
 
-            _queueUrls = _queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
-            _queueRegions = _queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
+            queueUrls = queueArns.Select(qarn => qarn.SqsArnToUrl()).ToArray();
+            queueRegions = queueArns.Select(qarn => RegionEndpoint.GetBySystemName(qarn.Region)).ToArray();
             this.expectedAttributeNames = settings.ExpectedMessageAttributeNames.ToList();
         }
         protected string Id(int queueIndex) => $"Queue {queueIndex} Listener {this.ListenerId}";
@@ -69,7 +75,7 @@ namespace SqsPriorityQueue
             using (logger.BeginScope("ProcessorId={ProcessorId}", this.ListenerId))
             {
                 logger.LogInformation("Started listening loop for source queues: {QueueArnsCommaDelimited}",
-                    string.Join(",", _queueArns.AsEnumerable()));
+                    string.Join(",", queueArns.AsEnumerable()));
 
                 try
                 {
@@ -90,6 +96,8 @@ namespace SqsPriorityQueue
                     throw;
                 }
             }
+
+            this.logger.LogInformation("Exited listening loop for ProcessorId={ProcessorId}", this.ListenerId);
         }
 
         /// <summary>
@@ -113,18 +121,26 @@ namespace SqsPriorityQueue
         {
             // Going from the highest priority 
             for (int queueIndex = 0; 
-                queueIndex < _queueArns.Length && !cancellationToken.IsCancellationRequested; 
+                queueIndex < queueArns.Length && !cancellationToken.IsCancellationRequested; 
                 queueIndex++) 
             {
-                using (logger.BeginScope("QueueIndex={QueueIndex}, QueueArn={QueueArn}", queueIndex, _queueArns[queueIndex]))
+                using (logger.BeginScope("QueueIndex={QueueIndex}, QueueArn={QueueArn}", queueIndex, queueArns[queueIndex]))
                 {
-                    bool isTopPriorityQueue = queueIndex == 0 && _queueArns.Length > 1;
+                    if(this.IsPaused)
+                    {
+                        this.logger.LogTrace("Processor is paused.");
+                        await cancellationToken.WaitHandle.WaitOneAsync(this.isPausedCheckFrequencyMillisec);
+                        queueIndex = -1;
+                        continue;
+                    }
+
+                    bool isTopPriorityQueue = queueIndex == 0 && queueArns.Length > 1;
 
                     if (isTopPriorityQueue)
                     {   // A top priority queue with lower priority queues present
                         bool mayHaveMessages = true;
 
-                        for (int pollingDelaySeconds = lowPriorityQueueMayHaveMessages ? 0 : _highPriorityWaitTimeoutSeconds; // Do long polling of high-prty queue only if we think low-prty are empty, short-poll otherwise.
+                        for (int pollingDelaySeconds = lowPriorityQueueMayHaveMessages ? 0 : highPriorityWaitTimeoutSeconds; // Do long polling of high-prty queue only if we think low-prty are empty, short-poll otherwise.
                             mayHaveMessages && !cancellationToken.IsCancellationRequested;
                             pollingDelaySeconds = 0) // keep pulling messages from top priority queue for as long there are ones
                         {
@@ -136,7 +152,7 @@ namespace SqsPriorityQueue
 
                         // If there's only one queue, use maximum long-polling delay.
                         // If it's a low priority queue, we'll do short polling
-                        int pollingDelaySeconds = _queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0;
+                        int pollingDelaySeconds = queueArns.Length == 1 ? maxLongPollingTimeSeconds : 0;
 
                         lowPriorityQueueMayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
 
@@ -191,8 +207,8 @@ namespace SqsPriorityQueue
         {
             var receiveMessageRequest = new ReceiveMessageRequest
             {
-                QueueUrl = _queueUrls[queueIndex],
-                MaxNumberOfMessages = _messageBatchSize, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
+                QueueUrl = queueUrls[queueIndex],
+                MaxNumberOfMessages = messageBatchSize, // Helps to avoid sequencing of processors and shifts parallelism control to the number of created SqsProcessor class instances
                 WaitTimeSeconds = longPollTimeSeconds,
                 MessageAttributeNames = this.ExpectMessageAttributes().ToList()
             };
@@ -246,7 +262,7 @@ namespace SqsPriorityQueue
                     // Failed to process the message.
                     // Default implementation of HandlePayloadProcessingException() will return failed
                     // message back to the queue (or to the DQL) by setting message visibility timeout to _failureVisibilityTimeout.
-                    await HandlePayloadProcessingException(ex, message, queueIndex, _failureVisibilityTimeout);
+                    await HandlePayloadProcessingException(ex, message, queueIndex, failureVisibilityTimeout);
                     return;
                 }
 
@@ -259,7 +275,7 @@ namespace SqsPriorityQueue
         /// <summary>
         /// Provides ability to handle message processing errors.
         /// Default behavior is to put the message back into the queue for a re-try 
-        /// after the delay of <see cref="_failureVisibilityTimeout"/>.
+        /// after the delay of <see cref="failureVisibilityTimeout"/>.
         /// </summary>
         /// <param name="ex">Exception thrown during message processing.</param>
         /// <param name="message">SQS message being processed</param>
@@ -297,7 +313,7 @@ namespace SqsPriorityQueue
 
         protected async Task UpdateMessageVisibilityTimeout(string receiptHandle, int queueIndex, TimeSpan visibilityTimeout)
         {
-            await this.sqsClient.SetVisibilityTimeout(_queueArns[queueIndex], receiptHandle, visibilityTimeout);
+            await this.sqsClient.SetVisibilityTimeout(queueArns[queueIndex], receiptHandle, visibilityTimeout);
             logger.LogDebug("Successfully set message visibility timeout to {VisibilityTimeout}", visibilityTimeout.ToDuration());
         }
 
@@ -305,7 +321,7 @@ namespace SqsPriorityQueue
         {
             DeleteMessageRequest deleteMessageRequest = new DeleteMessageRequest
             {
-                QueueUrl = _queueUrls[queueIndex],
+                QueueUrl = queueUrls[queueIndex],
                 ReceiptHandle = message.ReceiptHandle
             };
             DeleteMessageResponse response = await sqsClient.DeleteMessageAsync(deleteMessageRequest);
@@ -327,7 +343,7 @@ namespace SqsPriorityQueue
         {
             var sendMessageRequest = new SendMessageRequest
             {
-                QueueUrl = _queueUrls[queueIndex],
+                QueueUrl = queueUrls[queueIndex],
                 MessageBody = this.SerializeMessage(payload),
                 DelaySeconds = delaySeconds
             };

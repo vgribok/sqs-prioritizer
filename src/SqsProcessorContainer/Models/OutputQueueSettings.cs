@@ -44,8 +44,9 @@ namespace MessagePrioritizer.Models
 
         /// <summary>
         /// Specifies how often message pump processor checks output queue
+        /// to decide whether to pause fetching messages from source queues.
         /// </summary>
-        public int QueueDepthCheckFrequencySeconds { get; set; }
+        public int QueueDepthCheckFrequencyMilliseconds { get; set; } = 500;
 
         /// <summary>
         /// Static (not exp-back-off) visibility delay for each message
