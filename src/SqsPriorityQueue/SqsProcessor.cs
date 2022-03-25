@@ -146,8 +146,7 @@ namespace SqsPriorityQueue
                         {
                             mayHaveMessages = await FetchAndProcessQueueMessageBatch(queueIndex, pollingDelaySeconds, cancellationToken);
                         }
-                    }
-                    else
+                    }else
                     {   // A single queue or a lower priority queue
 
                         // If there's only one queue, use maximum long-polling delay.
